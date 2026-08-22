@@ -112,8 +112,9 @@ export const CyberGlobe: React.FC<CyberGlobeProps> = ({
   ], [targetCoords]);
 
   // Only include markers from countries/coordinates where attacks have actually been received
+  // Only include Top 15 most aggressive threat origin clusters to eliminate visual clutter
   const activeAttackMarkers = useMemo(() => {
-    return markers.filter(
+    const valid = markers.filter(
       (m) =>
         (m.lat !== 0 || m.lng !== 0) &&
         m.count > 0 &&
@@ -121,6 +122,8 @@ export const CyberGlobe: React.FC<CyberGlobeProps> = ({
         m.country !== 'Unknown' &&
         m.country !== 'XX'
     );
+
+    return valid.sort((a, b) => (b.count || 0) - (a.count || 0)).slice(0, 15);
   }, [markers]);
 
   // Maximum hit count for 3D pillar height scaling

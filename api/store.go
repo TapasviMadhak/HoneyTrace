@@ -578,7 +578,7 @@ func (s *Store) GetGlobeTelemetry(forceSync bool) GlobeTelemetryResponse {
 	WHERE latitude IS NOT NULL AND longitude IS NOT NULL AND (latitude != 0 OR longitude != 0)
 	GROUP BY latitude, longitude, city, country_code
 	ORDER BY count DESC
-	LIMIT 1000;
+	LIMIT 50;
 	`
 	rows, err := s.db.Query(markerQuery)
 	markers := make([]GlobeMarker, 0)
