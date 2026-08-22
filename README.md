@@ -235,7 +235,7 @@ echo "GROQ_API_KEY=your_groq_api_key" > .env
 go run ./api
 ```
 
----
-
-## License
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+## Security & Community
+- **Security Policy**: See [SECURITY.md](SECURITY.md) for vulnerability reporting procedures.
+- **Code of Conduct**: See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community guidelines.
+- **License**: This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
