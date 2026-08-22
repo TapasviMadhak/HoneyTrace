@@ -1,0 +1,12 @@
+{
+  "name": "honeytrace",
+  "version": "0.1.0",
+  "private": true,
+  "author": "Tapasvi Madhak <tapasvimadhak8711@gmail.com>",
+  "scripts": {
+    "dev": "npm --prefix dashboard run dev",
+    "build": "npm --prefix dashboard run build",
+    "preview": "npm --prefix dashboard run preview",
+    "lint": "npm --prefix dashboard run lint"
+  }
+}

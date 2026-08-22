@@ -1,0 +1,11 @@
+[Unit]
+Description=HoneyTrace API
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/opt/honeytrace/api
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

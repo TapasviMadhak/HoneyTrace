@@ -1,0 +1,165 @@
+Project Description: HoneyTrace
+The real gap this project addresses: raw security telemetry is noisy and technical, but decisions have to be made fast and explained to people who don't read Suricata rule syntax. A SOC analyst's actual job isn't detecting the anomaly — the tools do that — it's triage: deciding what matters, why, and what to do about it. That's the skill this project is built to demonstrate.
+So the problem statement, framed the way you'd write it for a project abstract or interview:
+"Security teams generate large volumes of low-level alerts (IDS signatures, failed logins, port scans) that require manual correlation and interpretation before they become actionable intelligence. This project builds an automated pipeline that captures real attack traffic against an internet-exposed honeypot, correlates and enriches the resulting alerts, and uses an LLM to translate raw signatures into analyst-readable explanations mapped to MITRE ATT&CK — reducing the time between detection and understanding."
+Complete workflow
+Phase 1 — Exposure and capture
+An EC2 instance sits in a public subnet, deliberately weakly configured (an SSH service, a fake login page, or a service like Cowrie) to attract real internet scanning and attack traffic. This isn't simulated data — it's genuine attacker behavior, which is the whole point: your dataset is authentic, not a Kaggle CSV.
+Phase 2 — Detection
+Suricata runs on the instance as a network IDS, matching traffic against signature rules (port scans, brute-force patterns, known exploit signatures, suspicious payloads). Fail2ban watches auth logs and system logs, banning IPs after repeated failed attempts and logging every ban event. Together these produce two alert streams: network-level (Suricata) and host-level (Fail2ban).
+Phase 3 — Log shipping
+Both tools' logs get shipped off the instance — via CloudWatch Logs agent or a small forwarder — so alerts survive even if the honeypot instance is compromised or rebuilt. This is a real SOC practice (don't trust logs sitting on the box an attacker just breached).
+Phase 4 — Correlation and enrichment
+A Lambda function (triggered on new log entries via CloudWatch Logs subscription filter, or scheduled) parses the raw Suricata/Fail2ban output, deduplicates repeat noise (the same scanner hitting you every 30 seconds shouldn't generate 200 identical alerts), and tags each meaningful event with a MITRE ATT&CK technique ID where applicable (e.g. repeated SSH failures → T1110 Brute Force).
+Phase 5 — AI triage
+The enriched alert gets passed to a free-tier LLM (Gemini or Groq) with a prompt asking it to explain, in plain language: what happened, why it matters, likely attacker intent, and suggested response — essentially auto-generating the "analyst notes" a human would write by hand. This is the step that turns raw signatures into something a non-technical stakeholder (or an interviewer) can read and immediately understand.
+Phase 6 — Storage
+Structured alert data (timestamp, source IP, technique ID, severity, AI summary) goes into DynamoDB for fast dashboard queries. Raw logs get archived to S3 for deeper investigation or for pulling real examples into your writeup later.
+Phase 7 — Visualization
+A React dashboard, served via S3 + CloudFront and backed by API Gateway, shows a live alert feed, a MITRE ATT&CK heatmap (which techniques you're seeing most), and geographic/source-IP breakdowns. This is the artifact you actually demo in an interview — screen-share it and walk through a real attack it caught.
+Phase 8 — Cost and lifecycle control
+A scheduled Lambda starts/stops the honeypot instance on a schedule rather than running blind 24/7 forever without oversight, and billing alarms watch spend against your credit runway.
+What it actually helps with
+For your resume/portfolio, this gives you one project that legitimately spans four resume categories instead of four separate toy projects:
+•	Cloud infrastructure (VPC, IAM, Lambda, EventBridge, DynamoDB, IaC)
+•	Full-stack development (Lambda backend, React frontend)
+•	Security engineering (IDS tuning, log correlation, ATT&CK mapping)
+•	Applied AI (LLM-based alert summarization — a genuinely useful, non-gimmicky use of an API)
+
+
+
+HoneyTrace — final project structure, stack, and roadmap (with AI triage included)
+Project structure
+honeytrace/
+├── infra/
+│   ├── terraform/
+│   │   ├── network.tf          # VPC, public subnet, IGW, route table
+│   │   ├── security.tf         # security groups (bait ports open, everything else closed)
+│   │   ├── compute.tf          # EC2 t3.small, EBS volume, Elastic IP
+│   │   ├── s3.tf                # backup bucket, lifecycle policy
+│   │   ├── iam.tf               # instance role — S3 write-only for backups, nothing else
+│   │   └── variables.tf / outputs.tf
+│   └── bootstrap/
+│       ├── bootstrap.sh         # master install script
+│       ├── install_cowrie.sh
+│       ├── harden_ssh.sh        # move real sshd to private port, regen host keys
+│       ├── stealth_persona.sh   # hostname, banner, bait files
+│       └── systemd/
+│           ├── cowrie.service            # Cowrie's own unit, untouched by anything else
+│           ├── honeytrace-ingest.service
+│           ├── honeytrace-api.service
+│           └── honeytrace-backup.timer + .service
+│
+├── ingest/                      # Go (or Python) — runs on the instance
+│   ├── cowrie_tailer.go         # offset+inode tracked JSON tailer
+│   ├── journald_tailer.go       # cursor-tracked journald reader
+│   ├── dedup.go                 # event hashing, idempotent insert
+│   ├── clustering.go            # HASSH + username-corpus actor clustering
+│   └── classifier.go            # probe/proxy/deploy/mixed/unknown rules
+│
+├── api/                         # backend serving the dashboard
+│   ├── main.go / main.py
+│   ├── routes/
+│   │   ├── events.go
+│   │   ├── actors.go
+│   │   ├── sessions.go
+│   │   ├── search.go             # command palette endpoint
+│   │   ├── enrich.go             # on-demand IP enrichment, cached
+│   │   ├── triage.go              # on-demand LLM triage endpoint
+│   │   ├── settings.go           # keystore CRUD, masked reads, connection test
+│   │   └── report.go             # AbuseIPDB / MalwareBazaar actions
+│   ├── triage/
+│   │   ├── provider.go            # interface: Summarize(event) → string
+│   │   ├── gemini_client.go
+│   │   ├── groq_client.go
+│   │   ├── prompt_templates/
+│   │   │   └── event_summary.tmpl # documented, iterated-on prompt
+│   │   └── cache.go                # don't re-triage the same event twice
+│   ├── db/
+│   │   ├── schema.sql              # includes triage_summary column/table
+│   │   └── migrations/
+│   └── config/
+│       └── layered_config.go     # DB > env > file precedence
+│
+├── dashboard/                    # React (Vite) + Tailwind, matches BugForge-Hub stack
+│   ├── src/
+│   │   ├── routes/
+│   │   │   ├── Globe.tsx         # ambient view ( / )
+│   │   │   └── Intel.tsx         # console ( /intel )
+│   │   ├── components/
+│   │   │   ├── CobeGlobe.tsx
+│   │   │   ├── CommandPalette.tsx
+│   │   │   ├── AttackHeatmap.tsx
+│   │   │   ├── SessionViewer.tsx   # shows LLM triage summary inline per session
+│   │   │   └── SettingsPanel.tsx   # includes Gemini/Groq key field + connection test
+│   │   └── themes/
+│   │       ├── signal.css
+│   │       ├── meridian.css
+│   │       └── sprite.css
+│
+├── docs/
+│   ├── README.md
+│   ├── TROUBLESHOOTING.md        # tar-over-ssh encoding gotcha, etc.
+│   └── ARCHITECTURE.md           # diagram + fingerprint-coverage math + prompt design writeup
+│
+└── .github/workflows/
+    ├── terraform.yml             # plan on PR, apply on merge
+    └── deploy-dashboard.yml      # build + tar-sync to instance
+Technology stack
+Layer	Choice	Note
+Compute	EC2 t3.small, 2GB RAM	not micro — this stack needs the headroom
+Networking	Public subnet, no NAT gateway	tight security group instead
+Honeypot	Cowrie (SSH/Telnet)	own systemd unit, untouched by dashboard
+Real SSH	OpenSSH on private port	admin access, journald as log source
+Ingest	Go, dual tailer (Cowrie JSON + journald)	offset/inode + cursor tracked, idempotent
+Storage	SQLite (WAL mode)	events, actors, sessions, cache, keystore, triage summaries
+Backup	S3 bucket, nightly timer	only AWS service beyond the instance
+API	Go (chi) or Python (FastAPI)	serves dashboard, polling not websockets
+IP enrichment	7 providers, on-demand + 24h cache	avoids free-tier rate limits
+AI triage	Gemini API or Groq API (free tier), swappable via interface	on-demand — triggered on "deploy"/"mixed" events or when a session is opened in the dashboard, not per-event; cached so an event is never re-summarized
+Logging	Suricata eve.json-style metadata by default	full pcap only for short manual demo sessions
+Frontend	React + Vite + Tailwind + Cobe (globe) + Recharts	two routes, polling every 2–5s
+IaC	Terraform	network, security, compute, S3, IAM
+CI/CD	GitHub Actions	terraform plan/apply + tar-over-ssh dashboard deploy
+Roadmap
+1.	Infra — Terraform network/security/compute/S3/IAM, instance up and reachable.
+2.	Bootstrap — Cowrie install, SSH hardening, stealth persona, bait files, systemd units written.
+3.	Ingest — dual tailer + SQLite schema + dedup, validated with injected test traffic.
+4.	Clustering + classification — HASSH/username clustering, probe/proxy/deploy/mixed/unknown rules.
+5.	AI triage — build the Gemini/Groq interface, design and iterate the prompt template (feed it source, actor cluster info, session transcript if Cowrie, intent label), wire caching so each event is summarized once.
+6.	API — events/actors/sessions/search/settings/report/triage routes, layered config, keystore.
+7.	IP enrichment — on-demand provider calls, cache, keyless providers first.
+8.	Dashboard — globe view first, then intel console (with triage summaries shown in the session viewer), command palette last.
+9.	Response actions — AbuseIPDB reporting with vetting gate, MalwareBazaar upload.
+10.	Backup automation — nightly S3 sync timer.
+11.	Data collection + tuning — let it run, retune classifier/Suricata rules against real traffic, spot-check triage summaries against raw sessions.
+12.	Writeup — README, architecture doc, fingerprint-coverage math, prompt design notes, real incident walkthroughs.
+________________________________________
+Task split
+Can be done by your coder (Copilot/Antigravity) — all code, config, and scripts
+•	All Terraform files (network, security groups, compute, S3, IAM policies)
+•	bootstrap.sh and all sub-scripts (Cowrie install, SSH hardening logic, persona/banner/bait file generation)
+•	All systemd unit files
+•	Go/Python ingest code: tailers, dedup, clustering, classifier
+•	AI triage module: provider interface, Gemini client, Groq client, prompt template design (iterate with you on wording), caching logic, the API route serving it, wiring the summary into the dashboard's session viewer
+•	IP enrichment module: provider clients, caching, normalization
+•	API backend: all other routes, DB schema/migrations, layered config, keystore logic
+•	React dashboard: both routes, all components, themes, Cobe integration, command palette
+•	GitHub Actions workflows
+•	Documentation drafts (README, ARCHITECTURE.md, TROUBLESHOOTING.md)
+•	Writing the tar-over-ssh deploy script
+Only you can do (AWS console / account / real-world actions)
+•	Create the AWS account setup: IAM admin user, MFA, billing alarms ($25/$50/$75)
+•	Set up the Terraform remote state backend (S3 bucket + lock table) before any Terraform runs
+•	Run terraform apply for the first time and review the plan output before approving
+•	SSH into the real instance to run bootstrap.sh initially, and verify you can still get in via the private port before considering the honeypot "live"
+•	Regenerate SSH host keys and confirm the fake banner/persona looks right by connecting from outside yourself
+•	Sign up for the IP enrichment provider accounts and generate API keys (AbuseIPDB, VirusTotal, GreyNoise, Shodan, OTX, IPQualityScore, IPinfo) — paste into Settings UI once built, never hand to the coder to embed
+•	Sign up for the Gemini or Groq API key yourself and paste it into the Settings UI — same handling rule, never let it get hardcoded into a committed file
+•	Personally review the first 10–20 AI-generated triage summaries against the raw session transcripts before trusting them in a demo — LLM triage can occasionally over-interpret a boring probe as something scarier than it is, and you want to catch that before it surfaces in an interview walkthrough
+•	Domain/DNS + ACM certificate setup if you want a real HTTPS domain for the dashboard
+•	Monitor the billing dashboard periodically
+•	Decide when to actually flip Cowrie live to the public internet, and watch the first 24–48 hours of real traffic yourself
+•	The final call on any AbuseIPDB "Report All" action or MalwareBazaar upload — review before it runs, don't automate unattended
+•	Writing the personal "lessons learned" section of the writeup, including your take on where the AI triage was useful vs. where you had to override it
+

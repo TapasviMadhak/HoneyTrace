@@ -1,0 +1,11 @@
+[Unit]
+Description=Cowrie Honeypot
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/cowrie
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

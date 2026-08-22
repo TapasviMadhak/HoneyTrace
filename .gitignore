@@ -1,0 +1,52 @@
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.swp
+*.bak
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Go
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Node / TypeScript
+node_modules/
+dist/
+.vite/
+coverage/
+*.tsbuildinfo
+dashboard/vite.config.js
+dashboard/vite.config.d.ts
+
+# SQLite / Local data
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Local env & secrets (NEVER COMMIT)
+.env
+.env.*
+!.env.example

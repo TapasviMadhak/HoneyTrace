@@ -1,0 +1,6 @@
+[Unit]
+Description=HoneyTrace backup job
+
+[Service]
+Type=oneshot
+ExecStart=/opt/honeytrace/backup.sh

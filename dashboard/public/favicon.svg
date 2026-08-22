@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- Minimalist Hexagon Perimeter -->
+  <path
+    d="M16 3.2 L27.2 9.6 V22.4 L16 28.8 L4.8 22.4 V9.6 Z"
+    stroke="#00f0ff"
+    stroke-width="2.2"
+    stroke-linejoin="round"
+  />
+  <!-- Minimalist Geometric Core -->
+  <path
+    d="M11 12 V20 M21 12 V20 M11 16 H21"
+    stroke="#00f0ff"
+    stroke-width="2.2"
+    stroke-linecap="round"
+  />
+</svg>

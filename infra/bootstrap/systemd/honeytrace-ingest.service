@@ -1,0 +1,11 @@
+[Unit]
+Description=HoneyTrace Ingest
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/opt/honeytrace/ingest
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
