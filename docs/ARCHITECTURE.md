@@ -13,10 +13,10 @@ flowchart TB
  subgraph WAN["Public Internet"]
         A["Adversaries / Botnets<br>(SSH Brute-force &amp; Scanners)"]
   end
- subgraph NETLIFY["Netlify Edge & DNS Layer"]
+ subgraph CF_PAGES["Cloudflare Pages &amp; DNS Layer"]
         DNS["Custom Subdomain<br>honeytrace.tapasvimadhak.works"]
         SPA["Vite + React Cyber HUD<br>(3D Threat Globe &amp; Intel Console)"]
-        PROXY["Netlify Edge Proxy<br>(_redirects / netlify.toml)"]
+        PROXY["Cloudflare Pages Proxy<br>(_redirects / _headers)"]
   end
  subgraph INGRESS["Network Boundary &amp; Routing"]
         PUB_IP["Public IPv4 Interface<br>(13.234.121.199)"]
@@ -110,7 +110,8 @@ flowchart TB
 ### 3. API & AI SOC Intelligence Layer
 - **Go REST Service (`:8080`)**: Exposes structured telemetry, 3D globe coordinates, quarantined binary hex inspection, and wordlist streams.
 - **Groq LPU Acceleration**: Powers the AI Incident Response Commander with real-time RAG context retrieval and MITRE ATT&CK campaign mapping.
+- **AbuseIPDB Threat Intelligence**: Live IP reputation scores, ISP attribution, and automated threat reporting.
 
 ### 4. Edge Distribution & Administration
-- **Netlify Edge Reverse Proxy**: Relays public HTTPS dashboard traffic to the AWS EC2 API endpoint (`:8080`), eliminating CORS and mixed-content issues.
+- **Cloudflare Pages Edge Reverse Proxy**: Relays public HTTPS dashboard traffic to the AWS EC2 API endpoint (`:8080`), eliminating CORS and mixed-content issues with unlimited free bandwidth and zero build limits.
 - **Tailscale Encrypted Mesh**: Restricts administrative OpenSSH access exclusively to authorized Tailnet keys.

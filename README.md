@@ -13,10 +13,10 @@ flowchart TB
  subgraph WAN["Public Internet"]
         A["Adversaries / Botnets<br>(SSH Brute-force &amp; Scanners)"]
   end
- subgraph NETLIFY["Netlify Edge & DNS Layer"]
+ subgraph CF_PAGES["Cloudflare Pages &amp; Edge Layer"]
         DNS["Custom Subdomain<br>honeytrace.tapasvimadhak.works"]
         SPA["Vite + React Cyber HUD<br>(3D Threat Globe &amp; Intel Console)"]
-        PROXY["Netlify Edge Proxy<br>(_redirects / netlify.toml)"]
+        PROXY["Cloudflare Pages Proxy<br>(_redirects / _headers)"]
   end
  subgraph INGRESS["Network Boundary &amp; Routing"]
         PUB_IP["Public IPv4 Interface<br>(13.234.121.199)"]
@@ -48,25 +48,26 @@ flowchart TB
         EC2
   end
  subgraph ADMIN_CLIENTS["Secure Tailnet Devices"]
-        ADMIN["Admin Workstation / Termux<br>(Mac / Windows / Mobile)"]
-        BROWSER["Web Browser User<br>(Public View)"]
+        BROWSER["Analyst Web Browser<br>(HTTPS Cyber HUD)"]
+        ADMIN_LAPTOP["Administrator Terminal<br>(SSH via Tailscale)"]
   end
-    DNS --> SPA
-    SPA -- API Requests (/api/*) --> PROXY
+    A -->|"Public SSH Attack (:22)"| PUB_IP
     PUB_IP --> IPTABLES
     IPTABLES --> COWRIE
-    COWRIE -. Emulates .-> HONEYFS
-    COWRIE --> JSONLOG & DOWNLOADS
+    COWRIE -.->|"Emulates"| HONEYFS
+    COWRIE --> JSONLOG
+    COWRIE --> DOWNLOADS
     JSONLOG --> INGEST
     INGEST --> SQLITE
     SQLITE <--> API
     SQLITE --> WORDLIST
     WORDLIST --> API
-    TS_DAEMON --> REAL_SSHD
-    A -- Public SSH Attack (:22) --> PUB_IP
-    PROXY -- "HTTPS-to-HTTP Proxy Relay (:8080)" --> API
     BROWSER --> DNS
-    ADMIN -- Encrypted Tailscale SSH --> TS_DAEMON
+    DNS --> SPA
+    SPA -->|"API Requests (/api/*)"| PROXY
+    PROXY -->|"HTTPS-to-HTTP Proxy Relay (:8080)"| API
+    ADMIN_LAPTOP -->|"Encrypted Tailscale SSH"| TS_DAEMON
+    TS_DAEMON --> REAL_SSHD
 
      A:::attacker
      DNS:::edge
@@ -82,8 +83,8 @@ flowchart TB
      WORDLIST:::core
      TS_DAEMON:::vpn
      REAL_SSHD:::vpn
-     ADMIN:::client
      BROWSER:::client
+     ADMIN_LAPTOP:::client
     classDef attacker fill:#ffebee,stroke:#c62828,stroke-width:2px,color:#b71c1c
     classDef edge fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px,color:#4a148c
     classDef host fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
@@ -99,17 +100,17 @@ flowchart TB
 
 HoneyTrace uses a hybrid edge-proxy architecture that connects public dashboard deployments to the AWS sensor without exposing database credentials or encountering browser security restrictions:
 
-1. **Edge Reverse Proxy (`netlify.toml` / `_redirects`)**:
-   - The React single-page application is served over HTTPS via Netlify's global edge network.
-   - When the dashboard requests `/api/v1/telemetry/stats` or `/api/v1/ai/chat`, Netlify's edge layer proxies the request directly to the AWS EC2 instance at `http://13.234.121.199:8080/api/*`.
-   - **Zero Mixed-Content Blocking**: Browsers communicate exclusively via HTTPS with Netlify, preventing mixed-content blocking.
+1. **Edge Reverse Proxy (`_redirects` / `_headers`)**:
+   - The React single-page application is hosted on **Cloudflare Pages** with unlimited free bandwidth and zero build limits.
+   - When the dashboard requests `/api/v1/telemetry/stats` or `/api/v1/ai/chat`, Cloudflare's edge network proxies the request directly to the AWS EC2 instance at `http://13.234.121.199:8080/api/*`.
+   - **Zero Mixed-Content Blocking**: Browsers communicate exclusively via HTTPS with Cloudflare Pages, preventing mixed-content blocking.
    - **Zero CORS Bottlenecks**: API calls are same-origin on the client domain.
 2. **AWS EC2 Ingress Security (`honeytrace-sg`)**:
    - Port `8080` is authorized for inbound REST queries.
    - Port `22` forwards attacker traffic directly into the Cowrie honeypot decoy engine via iptables NAT redirection.
    - Host administrative SSH access is restricted exclusively to the private **Tailscale Mesh**.
-3. **Server-Side AI Secrecy**:
-   - The Groq API key is stored strictly on the server in `/opt/honeytrace/.env` (`chmod 600`), completely shielded from client-side bundles and Git tracking.
+3. **Server-Side AI Secrecy & AbuseIPDB Integration**:
+   - The Groq and AbuseIPDB API keys are stored strictly on the server in `/opt/honeytrace/.env` (`chmod 600`), completely shielded from client-side bundles and Git tracking.
 
 ---
 
@@ -117,12 +118,14 @@ HoneyTrace uses a hybrid edge-proxy architecture that connects public dashboard 
 
 ### 1. 3D Cyber Threat Globe
 - **Real-Time Attack Visualizer**: Renders global threat origin points, vertical intensity pillars, and ballistic trajectory arcs terminating at the Mumbai sensor node.
+- **Top 15 Hotspot Focus**: Eliminates visual clutter by intelligently prioritizing the highest-volume attack origin clusters.
 - **Single-IP Graph Isolation**: Click any IP in the *Top Attackers* or *Live Stream* table to isolate that specific attacker's trajectory on the 3D Earth while smoothly auto-panning the camera.
 - **Expandable HUD & Full Globe Mode**: Collapsible floating glass panels and 1-click **Full Globe View** for unobstructed visualization.
 
 ### 2. Breach Intelligence & Infiltration Tracker
 - **Dwell Time & Shell Telemetry**: Tracks attackers who successfully compromised credentials (e.g. `root:admin`, `root:123456`), measuring session duration and executed command counts.
 - **Top Infiltrator Attribution**: Ranks aggressive breaching subnets (such as Indonesian botnets and Peru scan waves).
+- **AbuseIPDB Badges**: Real-time threat confidence ratings and ISP attribution popovers for every infiltrator.
 
 ### 3. Dynamic Attacker Wordlist Engine
 - **Live Password Harvester**: Aggregates and dedupes all credentials submitted across 41,400+ attacks into a real-time dictionary of **6,467+ unique passwords**.

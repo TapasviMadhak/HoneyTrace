@@ -2,10 +2,10 @@ flowchart TB
  subgraph WAN["Public Internet"]
         A["Adversaries / Botnets<br>(SSH Brute-force &amp; Scanners)"]
   end
- subgraph NETLIFY["Netlify Edge & DNS Layer"]
+ subgraph CF_PAGES["Cloudflare Pages & DNS Layer"]
         DNS["Custom Subdomain<br>honeytrace.tapasvimadhak.works"]
         SPA["Vite + React Cyber HUD<br>(3D Threat Globe &amp; Intel Console)"]
-        PROXY["Netlify Edge Proxy<br>(_redirects / netlify.toml)"]
+        PROXY["Cloudflare Pages Proxy<br>(_redirects / _headers)"]
   end
  subgraph INGRESS["Network Boundary &amp; Routing"]
         PUB_IP["Public IPv4 Interface<br>(13.234.121.199)"]
