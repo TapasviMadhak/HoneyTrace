@@ -114,6 +114,76 @@ func (g *GeoResolver) Resolve(ipStr string) GeoLocation {
 	return loc
 }
 
+// isInternalOrIgnoredIP returns true if the IP is loopback, private, Carrier-Grade NAT (Tailscale), or ignored admin/dashboard IP
+func isInternalOrIgnoredIP(ipStr string) bool {
+	ipStr = strings.TrimSpace(ipStr)
+	if ipStr == "" || ipStr == "::1" || ipStr == "127.0.0.1" {
+		return true
+	}
+
+	// Filter custom ignored IPs from environment (e.g. HONEYTRACE_IGNORE_IPS=1.2.3.4,5.6.7.8)
+	if ignoreEnv := os.Getenv("HONEYTRACE_IGNORE_IPS"); ignoreEnv != "" {
+		for _, ign := range strings.Split(ignoreEnv, ",") {
+			if strings.TrimSpace(ign) == ipStr {
+				return true
+			}
+		}
+	}
+
+	parsed := net.ParseIP(ipStr)
+	if parsed == nil {
+		return true
+	}
+	if parsed.IsLoopback() || parsed.IsUnspecified() || parsed.IsMulticast() || parsed.IsPrivate() {
+		return true
+	}
+	if ip4 := parsed.To4(); ip4 != nil {
+		// Carrier-Grade NAT / Tailscale CGNAT range (100.64.0.0/10)
+		if ip4[0] == 100 && (ip4[1] >= 64 && ip4[1] <= 127) {
+			return true
+		}
+		// Docker / bridge subnets (172.16.0.0/12)
+		if ip4[0] == 172 && (ip4[1] >= 16 && ip4[1] <= 31) {
+			return true
+		}
+	}
+	return false
+}
+
+func purgeInternalIPs(db *sql.DB) {
+	deleteQuery := `
+		DELETE FROM events WHERE 
+			source_ip = '127.0.0.1' 
+			OR source_ip = '::1'
+			OR source_ip LIKE '10.%' 
+			OR source_ip LIKE '192.168.%' 
+			OR source_ip LIKE '172.16.%' 
+			OR source_ip LIKE '172.17.%' 
+			OR source_ip LIKE '172.18.%' 
+			OR source_ip LIKE '172.19.%' 
+			OR source_ip LIKE '172.20.%' 
+			OR source_ip LIKE '172.21.%' 
+			OR source_ip LIKE '172.22.%' 
+			OR source_ip LIKE '172.23.%' 
+			OR source_ip LIKE '172.24.%' 
+			OR source_ip LIKE '172.25.%' 
+			OR source_ip LIKE '172.26.%' 
+			OR source_ip LIKE '172.27.%' 
+			OR source_ip LIKE '172.28.%' 
+			OR source_ip LIKE '172.29.%' 
+			OR source_ip LIKE '172.30.%' 
+			OR source_ip LIKE '172.31.%' 
+			OR source_ip LIKE '100.%';
+	`
+	if res, err := db.Exec(deleteQuery); err == nil {
+		if aff, _ := res.RowsAffected(); aff > 0 {
+			log.Printf("[Store] Purged %d internal/private/management ingress events from database", aff)
+		}
+	}
+	_, _ = db.Exec("DELETE FROM commands WHERE source_ip LIKE '10.%' OR source_ip LIKE '192.168.%' OR source_ip LIKE '100.%' OR source_ip = '127.0.0.1';")
+	_, _ = db.Exec("DELETE FROM payloads WHERE source_ip LIKE '10.%' OR source_ip LIKE '192.168.%' OR source_ip LIKE '100.%' OR source_ip = '127.0.0.1';")
+}
+
 type Store struct {
 	db          *sql.DB
 	dbPath      string
@@ -143,6 +213,9 @@ func NewStore(dbPath, logPath, mmdbPath string) (*Store, error) {
 	if err := initSchema(db); err != nil {
 		log.Printf("[Store] Schema initialization warning: %v", err)
 	}
+
+	// Purge any local/management/dashboard/VPN IPs from historical DB
+	purgeInternalIPs(db)
 
 	geo := NewGeoResolver(mmdbPath)
 
@@ -359,6 +432,9 @@ func (s *Store) SyncFromCowrieLog() (int, error) {
 					var rawMap map[string]any
 					if jErr := json.Unmarshal([]byte(trimmed), &rawMap); jErr == nil {
 						srcIP, _ := rawMap["src_ip"].(string)
+						if isInternalOrIgnoredIP(srcIP) {
+							continue // Strictly exclude all internal/management/VPN/dashboard view IPs
+						}
 						sessionID, _ := rawMap["session"].(string)
 						eventID, _ := rawMap["eventid"].(string)
 						username, _ := rawMap["username"].(string)

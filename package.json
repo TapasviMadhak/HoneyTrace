@@ -7,12 +7,9 @@
     "dashboard"
   ],
   "scripts": {
-    "build": "rm -rf dashboard/dist && npm --prefix dashboard install && npm --prefix dashboard run build && rm -f dashboard/dist/_redirects",
+    "build": "npm --prefix dashboard install && npm --prefix dashboard run build",
     "dev": "npm --prefix dashboard run dev",
     "preview": "npm --prefix dashboard run preview",
     "lint": "npm --prefix dashboard run lint"
-  },
-  "devDependencies": {
-    "wrangler": "^4.125.0"
   }
 }

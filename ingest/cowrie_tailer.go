@@ -381,7 +381,42 @@ func (t *Tailer) insertAuxiliary(tx *sql.Tx, rawMap map[string]any, ev *CowrieEv
 	}
 }
 
+func isInternalOrIgnoredIP(ipStr string) bool {
+	ipStr = strings.TrimSpace(ipStr)
+	if ipStr == "" || ipStr == "::1" || ipStr == "127.0.0.1" {
+		return true
+	}
+
+	if ignoreEnv := os.Getenv("HONEYTRACE_IGNORE_IPS"); ignoreEnv != "" {
+		for _, ign := range strings.Split(ignoreEnv, ",") {
+			if strings.TrimSpace(ign) == ipStr {
+				return true
+			}
+		}
+	}
+
+	parsed := net.ParseIP(ipStr)
+	if parsed == nil {
+		return true
+	}
+	if parsed.IsLoopback() || parsed.IsUnspecified() || parsed.IsMulticast() || parsed.IsPrivate() {
+		return true
+	}
+	if ip4 := parsed.To4(); ip4 != nil {
+		if ip4[0] == 100 && (ip4[1] >= 64 && ip4[1] <= 127) {
+			return true
+		}
+		if ip4[0] == 172 && (ip4[1] >= 16 && ip4[1] <= 31) {
+			return true
+		}
+	}
+	return false
+}
+
 func (t *Tailer) insertEvent(tx *sql.Tx, ev *CowrieEvent) error {
+	if isInternalOrIgnoredIP(ev.SourceIP) {
+		return nil // Strictly skip and never insert internal/management/dashboard/VPN IPs
+	}
 	query := `
 	INSERT INTO events (
 		id, timestamp, source_ip, latitude, longitude, country_code, city, asn,

@@ -46,6 +46,10 @@ override.tf.json
 *_override.tf
 *_override.tf.json
 
+# Deployment caches
+.wrangler/
+.vercel/
+
 # Local env & secrets (NEVER COMMIT)
 .env
 .env.*

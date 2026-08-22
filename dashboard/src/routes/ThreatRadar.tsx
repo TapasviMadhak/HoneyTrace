@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ShieldAlert,
   Search,
@@ -67,6 +67,7 @@ export default function ThreatRadar() {
   const [searchIP, setSearchIP] = useState<string>('143.198.98.252');
   const [activeIntel, setActiveIntel] = useState<DualIntel | null>(null);
   const [isLoadingIntel, setIsLoadingIntel] = useState<boolean>(false);
+  const lookupSectionRef = useRef<HTMLDivElement | null>(null);
   
   // Filter Tabs: 'top10' | 'critical' | 'live10' | 'all'
   const [filterMode, setFilterMode] = useState<'top10' | 'critical' | 'live10' | 'all'>('top10');
@@ -152,10 +153,14 @@ export default function ThreatRadar() {
   }, [filterMode, topIPs, liveUnique10, intelCache]);
 
   // Fetch Dual Intel for a specific IP
-  const inspectIP = async (ip: string) => {
+  const inspectIP = async (ip: string, scrollToTop = false) => {
     const target = ip.trim();
     if (!target) return;
     setSearchIP(target);
+
+    if (scrollToTop && lookupSectionRef.current) {
+      lookupSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
 
     if (intelCache[target]) {
       setActiveIntel(intelCache[target]);
@@ -407,7 +412,7 @@ export default function ThreatRadar() {
       </div>
 
       {/* Interactive Search & Live Deep Inspection Section */}
-      <div className="p-6 rounded-2xl bg-[#0d1117]/95 border border-[#1e2638] shadow-2xl space-y-6">
+      <div ref={lookupSectionRef} className="p-6 rounded-2xl bg-[#0d1117]/95 border border-[#1e2638] shadow-2xl space-y-6 scroll-mt-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-2 font-mono text-sm font-bold text-slate-200">
             <Search className="w-4 h-4 text-cyan-400" />
@@ -712,7 +717,7 @@ export default function ThreatRadar() {
                   return (
                     <tr
                       key={`${item.ip}-${idx}`}
-                      onClick={() => inspectIP(item.ip)}
+                      onClick={() => inspectIP(item.ip, true)}
                       className={`cursor-pointer transition-colors ${
                         isSelected
                           ? 'bg-cyan-500/10 border-l-2 border-l-cyan-400'
@@ -771,7 +776,7 @@ export default function ThreatRadar() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            inspectIP(item.ip);
+                            inspectIP(item.ip, true);
                           }}
                           className="px-2.5 py-1 rounded-lg bg-[#06080d] hover:bg-[#1e2638] border border-[#1e2638] text-cyan-400 hover:text-cyan-300 text-[11px] font-bold inline-flex items-center gap-1"
                         >

@@ -1,8 +1,0 @@
-name = "honeytrace"
-main = "worker.js"
-compatibility_date = "2026-08-01"
-
-[assets]
-directory = "./dashboard/dist"
-binding = "ASSETS"
-not_found_handling = "single-page-application"
