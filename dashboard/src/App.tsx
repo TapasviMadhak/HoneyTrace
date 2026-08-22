@@ -6,6 +6,7 @@ import CapturedAttacks from './routes/CapturedAttacks';
 import Payloads from './routes/Payloads';
 import TerminalViewer from './routes/TerminalViewer';
 import Intel from './routes/Intel';
+import ThreatRadar from './routes/ThreatRadar';
 import {
   Globe2,
   Terminal,
@@ -17,6 +18,7 @@ import {
   Server,
   Zap,
   KeyRound,
+  Crosshair,
 } from 'lucide-react';
 import HoneyTraceLogo from './components/HoneyTraceLogo';
 import useTelemetry from './hooks/useTelemetry';
@@ -43,6 +45,14 @@ export default function App() {
       icon: KeyRound,
       badge: 'DICT',
       badgeColor: 'bg-[#00f0ff]/20 text-[#00f0ff] border border-[#00f0ff]/30',
+    },
+    {
+      path: '/radar',
+      label: 'Threat Radar (IP Intel)',
+      shortLabel: 'Radar',
+      icon: Crosshair,
+      badge: 'DUAL',
+      badgeColor: 'bg-rose-500/20 text-rose-400 border border-rose-500/30',
     },
     { path: '/payloads', label: 'Captured Payloads', shortLabel: 'Payloads', icon: FileCode },
     { path: '/terminal', label: 'Live Terminal', shortLabel: 'Terminal', icon: Terminal },
@@ -149,6 +159,7 @@ export default function App() {
           <Route path="/" element={<Globe />} />
           <Route path="/breaches" element={<Breaches />} />
           <Route path="/wordlist" element={<CapturedAttacks />} />
+          <Route path="/radar" element={<ThreatRadar />} />
           <Route path="/payloads" element={<Payloads />} />
           <Route path="/terminal" element={<TerminalViewer />} />
           <Route path="/intel" element={<Intel />} />

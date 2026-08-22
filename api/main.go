@@ -36,7 +36,8 @@ func main() {
 
 	ai := NewAIService()
 	abuse := NewAbuseClient()
-	Register(mux, store, ai, abuse)
+	greynoise := NewGreyNoiseClient()
+	Register(mux, store, ai, abuse, greynoise)
 
 	// Static Cyber HUD frontend serving with SPA routing fallback
 	distCandidates := []string{

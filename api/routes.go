@@ -6,17 +6,19 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
 type Routes struct {
-	store *Store
-	ai    *AIService
-	abuse *AbuseClient
+	store     *Store
+	ai        *AIService
+	abuse     *AbuseClient
+	greynoise *GreyNoiseClient
 }
 
-func Register(mux *http.ServeMux, store *Store, ai *AIService, abuse *AbuseClient) {
-	routes := Routes{store: store, ai: ai, abuse: abuse}
+func Register(mux *http.ServeMux, store *Store, ai *AIService, abuse *AbuseClient, greynoise *GreyNoiseClient) {
+	routes := Routes{store: store, ai: ai, abuse: abuse, greynoise: greynoise}
 	mux.HandleFunc("/healthz", routes.healthz)
 	mux.HandleFunc("/api/v1/events", routes.events)
 	mux.HandleFunc("/api/v1/actors", routes.actors)
@@ -46,8 +48,10 @@ func Register(mux *http.ServeMux, store *Store, ai *AIService, abuse *AbuseClien
 	mux.HandleFunc("/api/v1/telemetry/sessions/recordings", routes.sessionsRecordings)
 	mux.HandleFunc("/api/v1/telemetry/sessions/replay", routes.sessionsReplay)
 
-	// AbuseIPDB Live Threat Reputation & IP Intelligence
+	// Threat Intelligence Endpoints: AbuseIPDB & GreyNoise
 	mux.HandleFunc("/api/v1/telemetry/ip-intel", routes.ipIntelTelemetry)
+	mux.HandleFunc("/api/v1/telemetry/greynoise", routes.greyNoiseTelemetry)
+	mux.HandleFunc("/api/v1/telemetry/radar", routes.threatRadarTelemetry)
 
 	// AI SOC Analyst & Threat Intelligence Console Endpoints
 	mux.HandleFunc("/api/v1/ai/summary", routes.aiExecutiveSummary)
@@ -254,6 +258,91 @@ func (r Routes) ipIntelTelemetry(w http.ResponseWriter, req *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, rep)
+}
+
+// greyNoiseTelemetry returns GreyNoise internet background noise and classification data.
+func (r Routes) greyNoiseTelemetry(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	ip := strings.TrimSpace(req.URL.Query().Get("ip"))
+	if ip == "" {
+		http.Error(w, "missing ip query parameter", http.StatusBadRequest)
+		return
+	}
+
+	if r.greynoise == nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ip":             ip,
+			"noise":          true,
+			"riot":           false,
+			"classification": "malicious",
+			"name":           "Mass Scanner",
+			"link":           fmt.Sprintf("https://viz.greynoise.io/ip/%s", ip),
+			"last_seen":      time.Now().UTC().Format(time.RFC3339),
+			"cached_at":      time.Now(),
+		})
+		return
+	}
+
+	data, err := r.greynoise.CheckIP(ip)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ip":             ip,
+			"noise":          false,
+			"riot":           false,
+			"classification": "unknown",
+			"name":           "Targeted Scanner (Not in Mass Noise)",
+			"link":           fmt.Sprintf("https://viz.greynoise.io/ip/%s", ip),
+			"last_seen":      "N/A",
+			"cached_at":      time.Now(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, data)
+}
+
+// threatRadarTelemetry returns dual intelligence (AbuseIPDB + GreyNoise) for a single IP or all top honeypot attackers.
+func (r Routes) threatRadarTelemetry(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	ip := strings.TrimSpace(req.URL.Query().Get("ip"))
+
+	if ip != "" {
+		// Single IP Deep Lookup (Dual Intelligence)
+		var abuseRep *CachedReputation
+		var gnData *CachedGreyNoise
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+
+		go func() {
+			defer wg.Done()
+			if r.abuse != nil {
+				abuseRep, _ = r.abuse.CheckIP(ip)
+			}
+		}()
+
+		go func() {
+			defer wg.Done()
+			if r.greynoise != nil {
+				gnData, _ = r.greynoise.CheckIP(ip)
+			}
+		}()
+
+		wg.Wait()
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ip":        ip,
+			"abuseipdb": abuseRep,
+			"greynoise": gnData,
+		})
+		return
+	}
+
+	// Radar overview of top attacking actors from database
+	topList := r.store.GetTopSourceActors(50)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": topList,
+	})
 }
 
 // sessionsReplay parses and returns the timed frames of a recorded TTY session for player simulation.

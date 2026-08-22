@@ -1628,3 +1628,47 @@ func (s *Store) GetWordlistSummary() (WordlistStats, error) {
 
 	return stats, nil
 }
+
+// GetTopSourceActors retrieves top attacking source IPs sorted by count
+func (s *Store) GetTopSourceActors(limit int) []TopSourceIP {
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+
+	rows, err := s.db.Query(`
+		SELECT source_ip, 
+		       COALESCE(country_code, 'XX') as country_code, 
+		       COALESCE(city, 'Unknown') as city, 
+		       COALESCE(latitude, 0.0) as latitude, 
+		       COALESCE(longitude, 0.0) as longitude, 
+		       COUNT(*) as count
+		FROM events
+		WHERE source_ip IS NOT NULL AND source_ip != ''
+		GROUP BY source_ip
+		ORDER BY count DESC
+		LIMIT ?;
+	`, limit)
+	results := make([]TopSourceIP, 0)
+	if err != nil {
+		return results
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var ip, cc, city string
+		var lat, lon float64
+		var count int
+		if err := rows.Scan(&ip, &cc, &city, &lat, &lon, &count); err == nil {
+			results = append(results, TopSourceIP{
+				IP:          ip,
+				CountryCode: cc,
+				City:        city,
+				Latitude:    lat,
+				Longitude:   lon,
+				Count:       count,
+			})
+		}
+	}
+
+	return results
+}

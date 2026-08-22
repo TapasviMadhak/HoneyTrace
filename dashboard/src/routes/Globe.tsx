@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react';
 import CyberGlobe, { ThreatMarker } from '../components/CyberGlobe';
 import useTelemetry, { HourlyStat } from '../hooks/useTelemetry';
-import AbuseBadge from '../components/AbuseBadge';
 import {
   ShieldAlert,
   Globe2,
@@ -367,10 +366,7 @@ export default function Globe() {
                                 <td className={`py-1.5 font-bold ${
                                   isSelected ? 'text-[#00f0ff]' : 'text-cyan-300'
                                 }`}>
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    <span className="truncate max-w-[110px]">{item.ip}</span>
-                                    <AbuseBadge ip={item.ip} />
-                                  </div>
+                                  <span className="truncate">{item.ip}</span>
                                 </td>
                                 <td className="py-1.5 text-slate-400 truncate max-w-[80px]">
                                   <span className="mr-1">{getFlagEmoji(item.country_code)}</span>
@@ -561,12 +557,9 @@ export default function Globe() {
                             </span>
                           </div>
                           <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5">
-                              <span className={`font-bold ${isSelected ? 'text-[#00f0ff]' : 'text-[#ff3366]'}`}>
-                                {ev.source_ip}
-                              </span>
-                              <AbuseBadge ip={ev.source_ip} />
-                            </div>
+                            <span className={`font-bold ${isSelected ? 'text-[#00f0ff]' : 'text-[#ff3366]'}`}>
+                              {ev.source_ip}
+                            </span>
                             <span className="text-slate-400 truncate max-w-[100px] text-[10px]">
                               user: <code className="text-cyan-300">{ev.username || 'root'}</code>
                             </span>
