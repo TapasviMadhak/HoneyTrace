@@ -144,6 +144,13 @@ func (c *AbuseClient) CheckIP(ip string) (*CachedReputation, error) {
 	}
 
 	c.mu.Lock()
+	if len(c.cache) > 5000 {
+		for k, v := range c.cache {
+			if time.Since(v.CachedAt) > 6*time.Hour {
+				delete(c.cache, k)
+			}
+		}
+	}
 	c.cache[ip] = rep
 	c.mu.Unlock()
 

@@ -1,6 +1,10 @@
 package config
 
-import "os"
+import (
+	"bufio"
+	"os"
+	"strings"
+)
 
 type Config struct {
 	Addr          string
@@ -9,7 +13,39 @@ type Config struct {
 	GeoIPCityPath string
 }
 
+func loadEnvFiles() {
+	candidates := []string{
+		".env",
+		"../.env",
+		"/opt/honeytrace/.env",
+		"/var/lib/honeytrace/.env",
+	}
+	for _, p := range candidates {
+		if file, err := os.Open(p); err == nil {
+			scanner := bufio.NewScanner(file)
+			for scanner.Scan() {
+				line := strings.TrimSpace(scanner.Text())
+				if line == "" || strings.HasPrefix(line, "#") {
+					continue
+				}
+				parts := strings.SplitN(line, "=", 2)
+				if len(parts) == 2 {
+					k := strings.TrimSpace(parts[0])
+					v := strings.Trim(strings.TrimSpace(parts[1]), `"'`)
+					if os.Getenv(k) == "" {
+						_ = os.Setenv(k, v)
+					}
+				}
+			}
+			_ = file.Close()
+			break
+		}
+	}
+}
+
 func Load() Config {
+	loadEnvFiles()
+
 	addr := os.Getenv("HONEYTRACE_ADDR")
 	if addr == "" {
 		addr = ":8080"
