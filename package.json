@@ -11,5 +11,8 @@
     "dev": "npm --prefix dashboard run dev",
     "preview": "npm --prefix dashboard run preview",
     "lint": "npm --prefix dashboard run lint"
+  },
+  "devDependencies": {
+    "wrangler": "^3.114.0"
   }
 }
