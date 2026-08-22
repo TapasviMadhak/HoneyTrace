@@ -140,6 +140,7 @@ type Tailer struct {
 	logPath   string
 	db        *sql.DB
 	geo       *GeoResolver
+	abuse     *IngestAbuseClient
 	stopChan  chan struct{}
 	eventChan chan CowrieEvent
 }
@@ -160,12 +161,14 @@ func NewTailer(dbPath, logPath, mmdbPath string) (*Tailer, error) {
 	}
 
 	geo := NewGeoResolver(mmdbPath)
+	abuse := NewIngestAbuseClient()
 
 	return &Tailer{
 		dbPath:    dbPath,
 		logPath:   logPath,
 		db:        db,
 		geo:       geo,
+		abuse:     abuse,
 		stopChan:  make(chan struct{}),
 		eventChan: make(chan CowrieEvent, 100),
 	}, nil
@@ -403,6 +406,14 @@ func (t *Tailer) insertEvent(tx *sql.Tx, ev *CowrieEvent) error {
 		ev.Summary,
 		ev.RawJSON,
 	)
+
+	// Automated AbuseIPDB reporting for confirmed breaches or critical exploitation
+	if err == nil && t.abuse != nil && (ev.EventType == "cowrie.login.success" || ev.Severity == "critical") {
+		go func(ip, user string) {
+			_ = t.abuse.ReportAttacker(ip, 25, user)
+		}(ev.SourceIP, ev.Username)
+	}
+
 	return err
 }
 

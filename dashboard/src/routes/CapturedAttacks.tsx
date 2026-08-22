@@ -13,6 +13,7 @@ import {
   Shield,
   FileText,
 } from 'lucide-react';
+import AbuseBadge from '../components/AbuseBadge';
 
 interface WordlistSummary {
   total_unique_passwords: number;
@@ -317,8 +318,11 @@ export default function CapturedAttacks() {
                       <td className="p-3 text-slate-400 whitespace-nowrap text-[11px]">
                         {new Date(c.timestamp).toLocaleString()}
                       </td>
-                      <td className="p-3 font-bold text-cyan-300 whitespace-nowrap">
-                        {c.source_ip}
+                      <td className="p-3 font-bold whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          <span className="text-cyan-300">{c.source_ip}</span>
+                          <AbuseBadge ip={c.source_ip} />
+                        </div>
                       </td>
                       <td className="p-3 text-slate-500 whitespace-nowrap text-[10px]">
                         <code>{c.session_id ? c.session_id.slice(0, 10) : 'N/A'}</code>

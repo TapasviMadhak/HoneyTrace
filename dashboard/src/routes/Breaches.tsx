@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ShieldAlert, AlertOctagon, Clock, Terminal, Globe, KeyRound, RefreshCw, CheckCircle2 } from 'lucide-react';
+import AbuseBadge from '../components/AbuseBadge';
 
 interface BreachSession {
   session_id: string;
@@ -175,12 +176,15 @@ export default function Breaches() {
               </div>
 
               <div className="space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <Globe className="w-4 h-4 text-cyan-400" />
-                  <strong className="text-sm font-mono text-white">{sess.source_ip}</strong>
-                  {sess.city && (
-                    <span className="text-xs text-slate-400">({sess.city}, {sess.country_code})</span>
-                  )}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Globe className="w-4 h-4 text-cyan-400" />
+                    <strong className="text-sm font-mono text-white">{sess.source_ip}</strong>
+                    {sess.city && (
+                      <span className="text-xs text-slate-400">({sess.city}, {sess.country_code})</span>
+                    )}
+                  </div>
+                  <AbuseBadge ip={sess.source_ip} />
                 </div>
                 <div className="text-xs font-mono text-slate-300">
                   auth: <code className="bg-slate-800 px-1.5 py-0.5 rounded text-emerald-400">{sess.username}</code>:<code>{sess.password || '***'}</code>

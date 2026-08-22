@@ -32,7 +32,8 @@ func main() {
 	defer store.Close()
 
 	ai := NewAIService()
-	Register(mux, store, ai)
+	abuse := NewAbuseClient()
+	Register(mux, store, ai, abuse)
 
 	server := &http.Server{
 		Addr:              cfg.Addr,
