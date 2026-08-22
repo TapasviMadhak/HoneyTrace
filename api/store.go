@@ -121,11 +121,13 @@ func isInternalOrIgnoredIP(ipStr string) bool {
 		return true
 	}
 
-	// Filter custom ignored IPs from environment (e.g. HONEYTRACE_IGNORE_IPS=1.2.3.4,5.6.7.8)
-	if ignoreEnv := os.Getenv("HONEYTRACE_IGNORE_IPS"); ignoreEnv != "" {
-		for _, ign := range strings.Split(ignoreEnv, ",") {
-			if strings.TrimSpace(ign) == ipStr {
-				return true
+	// Filter custom admin public IPv4s from environment (e.g. HONEYTRACE_ADMIN_IP=49.x.x.x or HONEYTRACE_IGNORE_IPS=1.2.3.4,5.6.7.8)
+	for _, envKey := range []string{"HONEYTRACE_ADMIN_IP", "ADMIN_IP", "HONEYTRACE_IGNORE_IPS"} {
+		if val := os.Getenv(envKey); val != "" {
+			for _, ign := range strings.Split(val, ",") {
+				if strings.TrimSpace(ign) == ipStr {
+					return true
+				}
 			}
 		}
 	}
@@ -182,6 +184,21 @@ func purgeInternalIPs(db *sql.DB) {
 	}
 	_, _ = db.Exec("DELETE FROM commands WHERE source_ip LIKE '10.%' OR source_ip LIKE '192.168.%' OR source_ip LIKE '100.%' OR source_ip = '127.0.0.1';")
 	_, _ = db.Exec("DELETE FROM payloads WHERE source_ip LIKE '10.%' OR source_ip LIKE '192.168.%' OR source_ip LIKE '100.%' OR source_ip = '127.0.0.1';")
+
+	// Explicitly purge any admin public IPv4 specified in environment
+	for _, envKey := range []string{"HONEYTRACE_ADMIN_IP", "ADMIN_IP", "HONEYTRACE_IGNORE_IPS"} {
+		if val := os.Getenv(envKey); val != "" {
+			for _, ign := range strings.Split(val, ",") {
+				ign = strings.TrimSpace(ign)
+				if ign != "" {
+					_, _ = db.Exec("DELETE FROM events WHERE source_ip = ?;", ign)
+					_, _ = db.Exec("DELETE FROM commands WHERE source_ip = ?;", ign)
+					_, _ = db.Exec("DELETE FROM payloads WHERE source_ip = ?;", ign)
+					_, _ = db.Exec("DELETE FROM sessions WHERE source_ip = ?;", ign)
+				}
+			}
+		}
+	}
 }
 
 type Store struct {

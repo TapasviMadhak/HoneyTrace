@@ -387,10 +387,13 @@ func isInternalOrIgnoredIP(ipStr string) bool {
 		return true
 	}
 
-	if ignoreEnv := os.Getenv("HONEYTRACE_IGNORE_IPS"); ignoreEnv != "" {
-		for _, ign := range strings.Split(ignoreEnv, ",") {
-			if strings.TrimSpace(ign) == ipStr {
-				return true
+	// Filter custom admin public IPv4s from environment (e.g. HONEYTRACE_ADMIN_IP=49.x.x.x or HONEYTRACE_IGNORE_IPS=1.2.3.4,5.6.7.8)
+	for _, envKey := range []string{"HONEYTRACE_ADMIN_IP", "ADMIN_IP", "HONEYTRACE_IGNORE_IPS"} {
+		if val := os.Getenv(envKey); val != "" {
+			for _, ign := range strings.Split(val, ",") {
+				if strings.TrimSpace(ign) == ipStr {
+					return true
+				}
 			}
 		}
 	}
