@@ -7,7 +7,7 @@
     "dashboard"
   ],
   "scripts": {
-    "build": "npm --prefix dashboard install && npm --prefix dashboard run build",
+    "build": "rm -rf dashboard/dist && npm --prefix dashboard install && npm --prefix dashboard run build && rm -f dashboard/dist/_redirects",
     "dev": "npm --prefix dashboard run dev",
     "preview": "npm --prefix dashboard run preview",
     "lint": "npm --prefix dashboard run lint"

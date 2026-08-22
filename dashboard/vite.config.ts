@@ -15,6 +15,9 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    emptyOutDir: true,
+  },
   css: {
     postcss: {
       plugins: [
