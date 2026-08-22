@@ -3,9 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "author": "Tapasvi Madhak <tapasvimadhak8711@gmail.com>",
+  "workspaces": [
+    "dashboard"
+  ],
   "scripts": {
+    "build": "npm --prefix dashboard install && npm --prefix dashboard run build",
     "dev": "npm --prefix dashboard run dev",
-    "build": "npm --prefix dashboard run build",
     "preview": "npm --prefix dashboard run preview",
     "lint": "npm --prefix dashboard run lint"
   }
