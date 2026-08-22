@@ -3,6 +3,9 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"honeytrace/api/config"
@@ -34,6 +37,36 @@ func main() {
 	ai := NewAIService()
 	abuse := NewAbuseClient()
 	Register(mux, store, ai, abuse)
+
+	// Static Cyber HUD frontend serving with SPA routing fallback
+	distCandidates := []string{
+		"dashboard/dist",
+		"./dist",
+		"/opt/honeytrace/dashboard/dist",
+	}
+	var distDir string
+	for _, dir := range distCandidates {
+		if info, err := os.Stat(filepath.Join(dir, "index.html")); err == nil && !info.IsDir() {
+			distDir = dir
+			break
+		}
+	}
+
+	if distDir != "" {
+		fileServer := http.FileServer(http.Dir(distDir))
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/healthz" {
+				return
+			}
+			fpath := filepath.Join(distDir, filepath.Clean(r.URL.Path))
+			if info, err := os.Stat(fpath); err == nil && !info.IsDir() {
+				fileServer.ServeHTTP(w, r)
+				return
+			}
+			http.ServeFile(w, r, filepath.Join(distDir, "index.html"))
+		})
+		log.Printf("[Frontend] Serving static Cyber HUD from: %s", distDir)
+	}
 
 	server := &http.Server{
 		Addr:              cfg.Addr,
