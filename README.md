@@ -7,12 +7,37 @@ HoneyTrace is an enterprise-grade cyber threat intelligence platform that captur
 
 ---
 
+## 🎮 Try It Live: Become Part of the Telemetry!
+
+Want to see yourself pop up on the **3D Threat Globe** and **Threat Reputation Radar** in real-time? You are welcome to test the sensor and interact with the honeypot directly from your terminal!
+
+### 1. Launch a Test Connection from your Terminal:
+```bash
+# Connect to the public honeypot sensor on Port 22:
+ssh -p 22 root@13.234.121.199
+
+# Or try custom usernames and passwords:
+ssh -p 22 admin@13.234.121.199
+```
+*(Any password you enter will either simulate an authentication challenge or grant an interactive sandbox shell)*.
+
+### 2. What Happens When You Connect:
+- 🌍 **Instant 3D Trajectory**: Open the [Live Cyber HUD](https://honeytrace.tapasvimadhak.works) while connecting — watch your geographic origin point light up with an animated ballistic arc terminating at the Mumbai sensor node.
+- 📡 **Threat Radar Appearance**: Visit the **[Threat Radar](https://honeytrace.tapasvimadhak.works/radar)** page to see your IP appear under the *Live Feed (10 Unique)* and inspect your cross-correlated **AbuseIPDB** & **GreyNoise** reputation profile.
+- 🔑 **Credential Harvester**: Submitted passwords automatically enrich the live **Dynamic Attacker Wordlist** (under Captured Attacks).
+- 🐚 **Shell Telemetry**: Any commands you test inside the fake shell (e.g. `whoami`, `uname -a`, `ls -la`) are captured and displayed in real-time.
+
+> [!NOTE]
+> Public TCP Port 22 is an isolated, sandboxed deception honeypot running an unprivileged Cowrie daemon. Host administrative access is strictly restricted to private encrypted mesh tunnels.
+
+---
+
 ## System Architecture
 
 ```mermaid
 flowchart TB
  subgraph WAN["Public Internet"]
-        A["Adversaries / Botnets<br>(SSH Brute-force &amp; Scanners)"]
+        A["Adversaries / Scanners / Testers<br>(SSH Traffic on Port :22)"]
   end
  subgraph VERCEL_EDGE["Vercel Global Edge Network"]
         DNS["Custom Domain (HTTPS)<br>honeytrace.tapasvimadhak.works"]
@@ -42,8 +67,8 @@ flowchart TB
         WORDLIST["Dynamic Wordlist Generator<br>(Unique Passwords / Shell Commands)"]
   end
  subgraph SECURE_MGMT["Administrative Management Layer"]
-        TS_DAEMON["Tailscale Daemon<br>(Tailscale SSH + MagicDNS ec2)"]
-        REAL_SSHD["Host OpenSSH Daemon<br>(Restricted to tailscale0)"]
+        TS_DAEMON["Tailscale Daemon<br>(Private Encrypted Mesh)"]
+        REAL_SSHD["Host OpenSSH Daemon<br>(Restricted to private tailnet)"]
   end
  subgraph EC2["EC2 Instance (t3.micro / Amazon Linux)"]
         INGRESS
@@ -54,9 +79,9 @@ flowchart TB
  subgraph AWS["AWS Cloud (ap-south-1 Mumbai)"]
         EC2
   end
- subgraph ADMIN_CLIENTS["Secure Client Devices"]
-        ADMIN["Admin Workstation / Termux<br>(Mac / Windows / Mobile)"]
-        BROWSER["Web Browser Analyst<br>(Public View)"]
+ subgraph ADMIN_CLIENTS["Client Devices"]
+        ADMIN["Admin Workstation / Termux<br>(Encrypted Mesh Access)"]
+        BROWSER["Web Browser Analyst<br>(Public Cyber HUD)"]
   end
     DNS --> SPA
     SPA -- API Requests (/api/*) --> PROXY
@@ -73,7 +98,7 @@ flowchart TB
     SQLITE --> WORDLIST
     WORDLIST --> API
     TS_DAEMON --> REAL_SSHD
-    A -- Public SSH Attack (:22) --> PUB_IP
+    A -- Public SSH Probe (:22) --> PUB_IP
     PROXY -- "HTTPS-to-HTTP Edge Proxy (:8080)" --> API
     BROWSER --> DNS
     ADMIN -- Encrypted Tailscale SSH --> TS_DAEMON
@@ -120,8 +145,8 @@ HoneyTrace uses a high-performance edge-proxy architecture that connects public 
    - **Zero Mixed-Content Blocking & Zero CORS Overhead**: Client browsers communicate exclusively via HTTPS.
 2. **Ingress Filtering & Isolation**:
    - **Strict Administrative IP Filter**: Excludes loopback (`127.0.0.1`), private subnets (`10.0.0.0/8`, `192.168.0.0/16`, `172.16.0.0/12`), Carrier-Grade NAT / Tailscale (`100.64.0.0/10`), and admin workstations so dashboard visits are never ingested or counted as attacks.
-   - **Port 22 Redirection**: Adversaries on port 22 are silently redirected via Linux kernel `iptables` NAT into the Cowrie honeypot on port 2222.
-   - **Tailscale Encrypted Management**: Real OpenSSH host administration is restricted exclusively to the private Tailscale interface.
+   - **Port 22 Redirection**: Adversaries and testers on port 22 are silently redirected via Linux kernel `iptables` NAT into the Cowrie honeypot on port 2222.
+   - **Encrypted Management**: Real OpenSSH host administration is restricted exclusively to the private Tailscale interface.
 3. **Server-Side API Key Secrecy**:
    - Groq AI, AbuseIPDB, and GreyNoise API keys are stored strictly on the server in `.env` (`chmod 600`), completely shielded from client-side bundles and Git.
 
@@ -258,7 +283,7 @@ cat << 'EOF' > .env
 GROQ_API_KEY=your_groq_api_key
 ABUSEIPDB_API_KEY=your_abuseipdb_api_key
 GREYNOISE_API_KEY=your_greynoise_api_key
-HONEYTRACE_IGNORE_IPS=your_admin_ip
+HONEYTRACE_ADMIN_IP=your_admin_ip
 EOF
 
 # Build and run API
