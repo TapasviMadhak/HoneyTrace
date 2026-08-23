@@ -2,12 +2,12 @@
 
 HoneyTrace is an enterprise-grade cyber threat intelligence platform that captures real attack traffic, correlates host and network telemetry, enriches alerts with dual threat intelligence feeds (**AbuseIPDB** & **GreyNoise**), and turns raw honeypot data into actionable analyst triage.
 
-🌐 **Live Cyber HUD**: [https://honeytrace.tapasvimadhak.works](https://honeytrace.tapasvimadhak.works)  
+**Live Cyber HUD**: [https://honeytrace.tapasvimadhak.works](https://honeytrace.tapasvimadhak.works)  
 <sub>**Project inspired by [NetworkShard](https://networkshard.com)**</sub>
 
 ---
 
-## 🎮 Try It Live: Become Part of the Telemetry!
+## Try It Live: Become Part of the Telemetry!
 
 Want to see yourself pop up on the **3D Threat Globe** and **Threat Reputation Radar** in real-time? You are welcome to test the sensor and interact with the honeypot directly from your terminal!
 
@@ -22,10 +22,10 @@ ssh -p 22 admin@13.234.121.199
 *(Any password you enter will either simulate an authentication challenge or grant an interactive sandbox shell)*.
 
 ### 2. What Happens When You Connect:
-- 🌍 **Instant 3D Trajectory**: Open the [Live Cyber HUD](https://honeytrace.tapasvimadhak.works) while connecting — watch your geographic origin point light up with an animated ballistic arc terminating at the Mumbai sensor node.
-- 📡 **Threat Radar Appearance**: Visit the **[Threat Radar](https://honeytrace.tapasvimadhak.works/radar)** page to see your IP appear under the *Live Feed (10 Unique)* and inspect your cross-correlated **AbuseIPDB** & **GreyNoise** reputation profile.
-- 🔑 **Credential Harvester**: Submitted passwords automatically enrich the live **Dynamic Attacker Wordlist** (under Captured Attacks).
-- 🐚 **Shell Telemetry**: Any commands you test inside the fake shell (e.g. `whoami`, `uname -a`, `ls -la`) are captured and displayed in real-time.
+- **Instant 3D Trajectory**: Open the [Live Cyber HUD](https://honeytrace.tapasvimadhak.works) while connecting — watch your geographic origin point light up with an animated ballistic arc terminating at the Mumbai sensor node.
+- **Threat Radar Appearance**: Visit the **[Threat Radar](https://honeytrace.tapasvimadhak.works/radar)** page to see your IP appear under the *Live Feed (10 Unique)* and inspect your cross-correlated **AbuseIPDB** & **GreyNoise** reputation profile.
+- **Credential Harvester**: Submitted passwords automatically enrich the live **Dynamic Attacker Wordlist** (under Captured Attacks).
+- **Shell Telemetry**: Any commands you test inside the fake shell (e.g. `whoami`, `uname -a`, `ls -la`) are captured and displayed in real-time.
 
 > [!NOTE]
 > Public TCP Port 22 is an isolated, sandboxed deception honeypot running an unprivileged Cowrie daemon. Host administrative access is strictly restricted to private encrypted mesh tunnels.
