@@ -164,10 +164,10 @@ HoneyTrace uses a high-performance edge-proxy architecture that connects public 
 - **Interactive Deep Lookup**: Enter any IP to inspect dual threat scores, ISP/hosting network, usage type, and RIOT benign status.
 - **1-Click Smooth Inspect**: Clicking "Deep Inspect" on any table row smoothly scrolls the view directly to the dual analysis console.
 - **Dedicated Directory Filters**:
-  - 🔥 **Top 10 Attackers**: Highest-volume adversaries sorted by attack count.
-  - 🚨 **Critical IPs (≥75%)**: High-severity threats with Abuse Confidence $\ge 75\%$.
-  - ⚡ **Live Feed (10 Unique)**: The 10 latest incoming connection IPs with **guaranteed zero duplicate repeats**.
-  - 🌐 **All Observed**: Full database threat directory.
+  - **Top 10 Attackers**: Highest-volume adversaries sorted by attack count.
+  - **Critical IPs (≥75%)**: High-severity threats with Abuse Confidence $\ge 75\%$.
+  - **Live Feed (10 Unique)**: The 10 latest incoming connection IPs with **guaranteed zero duplicate repeats**.
+  - **All Observed**: Full database threat directory.
 
 ### 3. Breach Intelligence & Infiltration Tracker
 - **Dwell Time & Shell Telemetry**: Tracks attackers who successfully compromised credentials (e.g. `root:admin`), measuring session duration and command count.
