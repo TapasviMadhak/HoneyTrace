@@ -69,8 +69,8 @@ export default function ThreatRadar() {
   const [isLoadingIntel, setIsLoadingIntel] = useState<boolean>(false);
   const lookupSectionRef = useRef<HTMLDivElement | null>(null);
   
-  // Filter Tabs: 'top10' | 'critical' | 'live10' | 'all'
-  const [filterMode, setFilterMode] = useState<'top10' | 'critical' | 'live10' | 'all'>('top10');
+  // Filter Tabs: 'top10' | 'live10'
+  const [filterMode, setFilterMode] = useState<'top10' | 'live10'>('top10');
 
   // Cache for multi-IP lookups to prevent redundant network calls
   const [intelCache, setIntelCache] = useState<Record<string, DualIntel>>({});
@@ -102,7 +102,7 @@ export default function ThreatRadar() {
     return result;
   }, [stats.recent_feeds, topIPs]);
 
-  // Compute table rows based on active filter
+  // Compute table rows based on active filter: Top 10 vs Live Feed 10 Unique
   const displayedRows = useMemo<RadarRowItem[]>(() => {
     if (filterMode === 'top10') {
       return topIPs.slice(0, 10).map((item, idx) => ({
@@ -114,50 +114,12 @@ export default function ThreatRadar() {
       }));
     }
 
-    if (filterMode === 'live10') {
-      return liveUnique10.map((item, idx) => ({
-        ...item,
-        rank: idx + 1,
-      }));
-    }
-
-    if (filterMode === 'critical') {
-      // Filter IPs with real Abuse score >= 75% or greynoise classification === 'malicious'
-      return topIPs
-        .filter((item) => {
-          const cached = intelCache[item.ip];
-          const score = cached?.abuseipdb?.score;
-          const isMalicious = cached?.greynoise?.classification === 'malicious';
-          return (typeof score === 'number' && score >= 75) || isMalicious;
-        })
-        .map((item, idx) => ({
-          ip: item.ip,
-          country_code: item.country_code,
-          city: item.city,
-          count: item.count,
-          rank: idx + 1,
-        }));
-    }
-
-    // Default 'all'
-    return topIPs.map((item, idx) => ({
-      ip: item.ip,
-      country_code: item.country_code,
-      city: item.city,
-      count: item.count,
+    // Default 'live10'
+    return liveUnique10.map((item, idx) => ({
+      ...item,
       rank: idx + 1,
     }));
-  }, [filterMode, topIPs, liveUnique10, intelCache]);
-
-  // Real-time count of Critical IPs (score >= 75 or greynoise malicious)
-  const criticalCount = useMemo(() => {
-    return topIPs.filter((item) => {
-      const cached = intelCache[item.ip];
-      const score = cached?.abuseipdb?.score;
-      const isMalicious = cached?.greynoise?.classification === 'malicious';
-      return (typeof score === 'number' && score >= 75) || isMalicious;
-    }).length;
-  }, [topIPs, intelCache]);
+  }, [filterMode, topIPs, liveUnique10]);
 
   // Fetch Dual Intel for a specific IP
   const inspectIP = async (ip: string, scrollToTop = false) => {
@@ -633,14 +595,14 @@ export default function ThreatRadar() {
             </p>
           </div>
 
-          {/* EDIT FILTERS: Top 10, Critical IPs, Live Feed (10 Unique) */}
+          {/* FILTERS: Top 10 vs Live Feed (10 Unique) */}
           <div className="flex items-center gap-2 font-mono text-xs flex-wrap">
             <Filter className="w-3.5 h-3.5 text-slate-500 mr-1" />
             
-            {/* Filter a: Top 10 */}
+            {/* Filter 1: Top 10 */}
             <button
               onClick={() => setFilterMode('top10')}
-              className={`px-3 py-1.5 rounded-xl border flex items-center gap-1.5 transition-all ${
+              className={`px-3.5 py-1.5 rounded-xl border flex items-center gap-1.5 transition-all ${
                 filterMode === 'top10'
                   ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 font-bold shadow-[0_0_15px_rgba(245,158,11,0.2)]'
                   : 'bg-[#06080d] text-slate-400 border-[#1e2638] hover:text-white'
@@ -650,23 +612,10 @@ export default function ThreatRadar() {
               <span>Top 10 Attackers</span>
             </button>
 
-            {/* Filter b: Critical IPs */}
-            <button
-              onClick={() => setFilterMode('critical')}
-              className={`px-3 py-1.5 rounded-xl border flex items-center gap-1.5 transition-all ${
-                filterMode === 'critical'
-                  ? 'bg-rose-500/20 text-rose-400 border-rose-500/40 font-bold shadow-[0_0_15px_rgba(244,63,94,0.25)]'
-                  : 'bg-[#06080d] text-slate-400 border-[#1e2638] hover:text-white'
-              }`}
-            >
-              <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
-              <span>Critical IPs (≥75%){criticalCount > 0 ? ` (${criticalCount})` : ''}</span>
-            </button>
-
-            {/* Filter c: Live Feed (10 Unique non-repeating IPs) */}
+            {/* Filter 2: Live Feed (10 Unique non-repeating IPs) */}
             <button
               onClick={() => setFilterMode('live10')}
-              className={`px-3 py-1.5 rounded-xl border flex items-center gap-1.5 transition-all ${
+              className={`px-3.5 py-1.5 rounded-xl border flex items-center gap-1.5 transition-all ${
                 filterMode === 'live10'
                   ? 'bg-[#00f0ff]/20 text-[#00f0ff] border-[#00f0ff]/40 font-bold shadow-[0_0_15px_rgba(0,240,255,0.25)]'
                   : 'bg-[#06080d] text-slate-400 border-[#1e2638] hover:text-white'
@@ -674,18 +623,6 @@ export default function ThreatRadar() {
             >
               <Activity className="w-3.5 h-3.5 text-[#00f0ff] animate-pulse" />
               <span>Live Feed (10 Unique)</span>
-            </button>
-
-            {/* Filter: All */}
-            <button
-              onClick={() => setFilterMode('all')}
-              className={`px-3 py-1.5 rounded-xl border transition-all ${
-                filterMode === 'all'
-                  ? 'bg-slate-700/50 text-slate-200 border-slate-500 font-bold'
-                  : 'bg-[#06080d] text-slate-400 border-[#1e2638] hover:text-white'
-              }`}
-            >
-              <span>All ({topIPs.length})</span>
             </button>
           </div>
         </div>
