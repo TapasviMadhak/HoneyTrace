@@ -122,24 +122,21 @@ export default function ThreatRadar() {
     }
 
     if (filterMode === 'critical') {
-      // Filter IPs with abuse score >= 75 or greynoise classification === 'malicious'
-      const criticals: RadarRowItem[] = [];
-      topIPs.forEach((item, idx) => {
-        const cached = intelCache[item.ip];
-        const score = cached?.abuseipdb?.score;
-        const isMalicious = cached?.greynoise?.classification === 'malicious';
-        // Default to critical if score >= 75 or default top attacker baseline
-        if ((score !== undefined && score >= 75) || isMalicious || (score === undefined && idx < 5)) {
-          criticals.push({
-            ip: item.ip,
-            country_code: item.country_code,
-            city: item.city,
-            count: item.count,
-            rank: idx + 1,
-          });
-        }
-      });
-      return criticals;
+      // Filter IPs with real Abuse score >= 75% or greynoise classification === 'malicious'
+      return topIPs
+        .filter((item) => {
+          const cached = intelCache[item.ip];
+          const score = cached?.abuseipdb?.score;
+          const isMalicious = cached?.greynoise?.classification === 'malicious';
+          return (typeof score === 'number' && score >= 75) || isMalicious;
+        })
+        .map((item, idx) => ({
+          ip: item.ip,
+          country_code: item.country_code,
+          city: item.city,
+          count: item.count,
+          rank: idx + 1,
+        }));
     }
 
     // Default 'all'
@@ -151,6 +148,16 @@ export default function ThreatRadar() {
       rank: idx + 1,
     }));
   }, [filterMode, topIPs, liveUnique10, intelCache]);
+
+  // Real-time count of Critical IPs (score >= 75 or greynoise malicious)
+  const criticalCount = useMemo(() => {
+    return topIPs.filter((item) => {
+      const cached = intelCache[item.ip];
+      const score = cached?.abuseipdb?.score;
+      const isMalicious = cached?.greynoise?.classification === 'malicious';
+      return (typeof score === 'number' && score >= 75) || isMalicious;
+    }).length;
+  }, [topIPs, intelCache]);
 
   // Fetch Dual Intel for a specific IP
   const inspectIP = async (ip: string, scrollToTop = false) => {
@@ -206,31 +213,25 @@ export default function ThreatRadar() {
     }
   }, [displayedRows]);
 
-  // Pre-fetch intelligence for visible rows
+  // Pre-fetch intelligence for all top IPs and live feed IPs
   useEffect(() => {
-    displayedRows.slice(0, 10).forEach((item) => {
-      if (!intelCache[item.ip]) {
-        fetch(`/api/v1/telemetry/ip-intel?ip=${encodeURIComponent(item.ip)}`)
+    const targets = [...topIPs, ...liveUnique10];
+    targets.forEach((item) => {
+      if (item.ip && !intelCache[item.ip]) {
+        fetch(`/api/v1/telemetry/radar?ip=${encodeURIComponent(item.ip)}`)
           .then((r) => r.json())
-          .then((abuseData) => {
-            fetch(`/api/v1/telemetry/greynoise?ip=${encodeURIComponent(item.ip)}`)
-              .then((r) => r.json())
-              .then((gnData) => {
-                setIntelCache((prev) => ({
-                  ...prev,
-                  [item.ip]: {
-                    ip: item.ip,
-                    abuseipdb: abuseData,
-                    greynoise: gnData,
-                  },
-                }));
-              })
-              .catch(() => {});
+          .then((dualData) => {
+            if (dualData && !dualData.error) {
+              setIntelCache((prev) => ({
+                ...prev,
+                [item.ip]: dualData,
+              }));
+            }
           })
           .catch(() => {});
       }
     });
-  }, [displayedRows]);
+  }, [topIPs, liveUnique10]);
 
   // LIVE DYNAMIC METRICS COMPUTATION
   const liveMetrics = useMemo(() => {
@@ -659,7 +660,7 @@ export default function ThreatRadar() {
               }`}
             >
               <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
-              <span>Critical IPs (≥75%)</span>
+              <span>Critical IPs (≥75%){criticalCount > 0 ? ` (${criticalCount})` : ''}</span>
             </button>
 
             {/* Filter c: Live Feed (10 Unique non-repeating IPs) */}
@@ -708,8 +709,9 @@ export default function ThreatRadar() {
               {displayedRows.length > 0 ? (
                 displayedRows.map((item, idx) => {
                   const cached = intelCache[item.ip];
-                  const score = cached?.abuseipdb?.score ?? (idx < 3 ? 95 : 70);
-                  const risk = getAbuseRiskTier(score);
+                  const hasAbuse = cached?.abuseipdb && typeof cached.abuseipdb.score === 'number';
+                  const score = hasAbuse ? cached!.abuseipdb!.score : null;
+                  const risk = score !== null ? getAbuseRiskTier(score) : null;
                   const isNoise = cached?.greynoise?.noise ?? true;
                   const actorName = cached?.greynoise?.name || (isNoise ? 'Mass Scanner' : 'Targeted Probe');
                   const isSelected = activeIntel?.ip === item.ip;
@@ -751,11 +753,17 @@ export default function ThreatRadar() {
                       </td>
 
                       <td className="py-3 px-3 text-center">
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${risk.badgeClass}`}
-                        >
-                          {score}% Confidence
-                        </span>
+                        {score !== null && risk ? (
+                          <span
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${risk.badgeClass}`}
+                          >
+                            {score}% Confidence
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-mono text-slate-400 bg-slate-800/50 border border-slate-700 animate-pulse">
+                            Analyzing...
+                          </span>
+                        )}
                       </td>
 
                       <td className="py-3 px-3 text-center">
