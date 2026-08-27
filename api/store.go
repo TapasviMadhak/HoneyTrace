@@ -1246,10 +1246,10 @@ func (s *Store) ListSessionRecordings() []SessionRecording {
 			}
 
 			var srcIP, user, tsStr string
-			_ = s.db.QueryRow("SELECT COALESCE(source_ip, 'Unknown'), COALESCE(username, 'root'), timestamp FROM events WHERE session_id = ? LIMIT 1", sessID).Scan(&srcIP, &user, &tsStr)
+			_ = s.db.QueryRow("SELECT COALESCE(source_ip, 'Unknown'), COALESCE(username, 'root'), timestamp FROM events WHERE session_id = ? OR raw_json LIKE ? LIMIT 1", sessID, "%"+sessID+"%").Scan(&srcIP, &user, &tsStr)
 
 			if srcIP == "" {
-				srcIP = "140.206.107.98"
+				srcIP = "Unknown Attacker"
 			}
 			if user == "" {
 				user = "root"
@@ -1263,7 +1263,7 @@ func (s *Store) ListSessionRecordings() []SessionRecording {
 			}
 
 			// Gather any commands from database for preview
-			cmdRows, err := s.db.Query("SELECT command FROM commands WHERE session_id = ? ORDER BY timestamp ASC LIMIT 10", sessID)
+			cmdRows, err := s.db.Query("SELECT command FROM commands WHERE session_id = ? OR id LIKE ? ORDER BY timestamp ASC LIMIT 10", sessID, "%"+sessID+"%")
 			cmdList := make([]string, 0)
 			if err == nil {
 				for cmdRows.Next() {
@@ -1287,6 +1287,11 @@ func (s *Store) ListSessionRecordings() []SessionRecording {
 			})
 		}
 	}
+
+	// Sort by FirstSeen descending so latest recorded sessions appear first
+	sort.Slice(recordings, func(i, j int) bool {
+		return recordings[i].FirstSeen.After(recordings[j].FirstSeen)
+	})
 
 	// Also add any sessions that have commands in SQLite but didn't write a TTY file
 	rows, err := s.db.Query(`
@@ -1422,7 +1427,7 @@ func (s *Store) GetSessionReplay(sessionID string) (*SessionRecording, error) {
 			frames = append(frames, SessionRecordingFrame{
 				TimeOffsetMs: 100,
 				Direction:    "output",
-				Data:         "Linux srv-internal-01 5.15.0-105-generic #115-Ubuntu SMP\r\nLast login: Thu Aug 20 12:00:00 2026 from 100.89.14.122\r\nroot@srv-internal-01:~# ",
+				Data:         "Linux srv-internal-01 5.15.0-105-generic #115-Ubuntu SMP\r\nLast login: Thu Aug 20 12:00:00 2026 from 198.51.100.1\r\nroot@srv-internal-01:~# ",
 			})
 
 			for cmdRows.Next() {
