@@ -138,18 +138,22 @@ func (r Routes) payloadsTelemetry(w http.ResponseWriter, _ *http.Request) {
 // payloadsInspect performs static forensics and hex dump inspection on a quarantined binary.
 func (r Routes) payloadsInspect(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	id := req.URL.Query().Get("id")
+	id := strings.TrimSpace(req.URL.Query().Get("id"))
 	if id == "" {
-		id = req.URL.Query().Get("sha256")
+		id = strings.TrimSpace(req.URL.Query().Get("sha256"))
 	}
 	if id == "" {
 		http.Error(w, "Missing 'id' or 'sha256' query parameter", http.StatusBadRequest)
 		return
 	}
+	if !isValidSafeHash(id) {
+		http.Error(w, "Invalid payload identifier or checksum format", http.StatusBadRequest)
+		return
+	}
 
 	inspection, err := r.store.InspectPayload(id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 
@@ -159,12 +163,16 @@ func (r Routes) payloadsInspect(w http.ResponseWriter, req *http.Request) {
 // payloadsDownload streams the raw quarantined payload binary file.
 func (r Routes) payloadsDownload(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	id := req.URL.Query().Get("id")
+	id := strings.TrimSpace(req.URL.Query().Get("id"))
 	if id == "" {
-		id = req.URL.Query().Get("sha256")
+		id = strings.TrimSpace(req.URL.Query().Get("sha256"))
 	}
 	if id == "" {
 		http.Error(w, "Missing 'id' or 'sha256' query parameter", http.StatusBadRequest)
+		return
+	}
+	if !isValidSafeHash(id) {
+		http.Error(w, "Invalid payload identifier or checksum format", http.StatusBadRequest)
 		return
 	}
 
@@ -348,15 +356,19 @@ func (r Routes) threatRadarTelemetry(w http.ResponseWriter, req *http.Request) {
 // sessionsReplay parses and returns the timed frames of a recorded TTY session for player simulation.
 func (r Routes) sessionsReplay(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	sessID := req.URL.Query().Get("id")
+	sessID := strings.TrimSpace(req.URL.Query().Get("id"))
 	if sessID == "" {
 		http.Error(w, "Missing session 'id' query parameter", http.StatusBadRequest)
+		return
+	}
+	if !isValidSafeSessionID(sessID) {
+		http.Error(w, "Invalid session identifier format", http.StatusBadRequest)
 		return
 	}
 
 	replay, err := r.store.GetSessionReplay(sessID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 

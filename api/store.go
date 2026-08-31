@@ -15,6 +15,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -24,6 +25,67 @@ import (
 	"github.com/oschwald/geoip2-golang"
 	_ "modernc.org/sqlite"
 )
+
+var (
+	safeSha256Regex    = regexp.MustCompile(`^[0-9a-fA-F]{64}$`)
+	safePayloadIDRegex = regexp.MustCompile(`^(pay-)?[0-9a-fA-F]{8,64}$`)
+	safeSessionIDRegex = regexp.MustCompile(`^[a-zA-Z0-9_\-]{6,64}$`)
+)
+
+// isValidSafeHash verifies that a payload hash or ID matches strict alphanumeric hex format with zero traversal characters
+func isValidSafeHash(input string) bool {
+	input = strings.TrimSpace(input)
+	if input == "" || len(input) > 68 {
+		return false
+	}
+	if strings.ContainsAny(input, "/\\:*?\"<>|\x00\r\n") || strings.Contains(input, "..") {
+		return false
+	}
+	return safeSha256Regex.MatchString(input) || safePayloadIDRegex.MatchString(input)
+}
+
+// isValidSafeSessionID verifies that a session ID contains only safe alphanumeric characters with zero traversal sequences
+func isValidSafeSessionID(input string) bool {
+	input = strings.TrimSpace(input)
+	if input == "" || len(input) > 68 {
+		return false
+	}
+	if strings.ContainsAny(input, "/\\:*?\"<>|\x00\r\n") || strings.Contains(input, "..") {
+		return false
+	}
+	return safeSessionIDRegex.MatchString(input)
+}
+
+// safeJoinAndVerify verifies that filename is strictly a child of baseDir without escaping via directory traversal
+func safeJoinAndVerify(baseDir, filename string) (string, error) {
+	filename = strings.TrimSpace(filename)
+	if filename == "" || strings.ContainsAny(filename, "/\\:*?\"<>|\x00\r\n") || strings.Contains(filename, "..") {
+		return "", fmt.Errorf("invalid or malicious filename: %s", filename)
+	}
+
+	cleanBase, err := filepath.Abs(filepath.Clean(baseDir))
+	if err != nil {
+		return "", err
+	}
+
+	cleanFilename := filepath.Base(filename)
+	if cleanFilename == "." || cleanFilename == "/" || cleanFilename == ".." {
+		return "", fmt.Errorf("invalid filename base")
+	}
+
+	joined := filepath.Join(cleanBase, cleanFilename)
+	cleanTarget, err := filepath.Abs(filepath.Clean(joined))
+	if err != nil {
+		return "", err
+	}
+
+	expectedPrefix := cleanBase + string(filepath.Separator)
+	if !strings.HasPrefix(cleanTarget, expectedPrefix) && cleanTarget != cleanBase {
+		return "", fmt.Errorf("path traversal attempt blocked: %s is outside %s", cleanTarget, cleanBase)
+	}
+
+	return cleanTarget, nil
+}
 
 type GeoLocation struct {
 	Latitude    float64
@@ -1029,6 +1091,9 @@ func (s *Store) ListPayloads() []PayloadItem {
 // InspectPayload performs deep static forensics on a captured payload file (Magic headers, hex dump, extracted IOC strings, MD5/SHA256).
 func (s *Store) InspectPayload(idOrSha string) (*PayloadInspection, error) {
 	idOrSha = strings.TrimSpace(idOrSha)
+	if !isValidSafeHash(idOrSha) {
+		return nil, fmt.Errorf("invalid payload identifier or checksum: must be a valid hex hash")
+	}
 
 	var p PayloadItem
 	var tsStr string
@@ -1039,13 +1104,21 @@ func (s *Store) InspectPayload(idOrSha string) (*PayloadInspection, error) {
 		LIMIT 1;
 	`, idOrSha, idOrSha, "pay-"+idOrSha).Scan(&p.ID, &tsStr, &p.SourceIP, &p.SessionID, &p.URL, &p.SHA256, &p.FilePath, &p.SizeBytes)
 
-	if err != nil && p.SHA256 == "" {
-		p.SHA256 = idOrSha
-		p.ID = "pay-" + idOrSha[:min(16, len(idOrSha))]
-		p.SourceIP = "Unknown"
-		p.Timestamp = time.Now().UTC()
+	if err != nil {
+		if safeSha256Regex.MatchString(idOrSha) {
+			p.SHA256 = idOrSha
+			p.ID = "pay-" + idOrSha[:min(16, len(idOrSha))]
+			p.SourceIP = "Unknown"
+			p.Timestamp = time.Now().UTC()
+		} else {
+			return nil, fmt.Errorf("payload not found")
+		}
 	} else {
 		p.Timestamp, _ = time.Parse(time.RFC3339Nano, tsStr)
+	}
+
+	if !safeSha256Regex.MatchString(p.SHA256) {
+		return nil, fmt.Errorf("invalid payload checksum in record")
 	}
 
 	downloadDirs := []string{
@@ -1059,7 +1132,10 @@ func (s *Store) InspectPayload(idOrSha string) (*PayloadInspection, error) {
 	var filePath string
 
 	for _, d := range downloadDirs {
-		candidate := filepath.Join(d, p.SHA256)
+		candidate, vErr := safeJoinAndVerify(d, p.SHA256)
+		if vErr != nil {
+			continue
+		}
 		if data, err := os.ReadFile(candidate); err == nil {
 			rawBytes = data
 			filePath = candidate
@@ -1160,6 +1236,25 @@ func (s *Store) InspectPayload(idOrSha string) (*PayloadInspection, error) {
 
 // GetPayloadRaw returns the raw file bytes for direct quarantine download.
 func (s *Store) GetPayloadRaw(idOrSha string) ([]byte, string, error) {
+	idOrSha = strings.TrimSpace(idOrSha)
+	if !isValidSafeHash(idOrSha) {
+		return nil, "", fmt.Errorf("invalid payload identifier or checksum: must be a valid hex hash")
+	}
+
+	var p PayloadItem
+	err := s.db.QueryRow("SELECT sha256 FROM payloads WHERE id = ? OR sha256 = ?", idOrSha, idOrSha).Scan(&p.SHA256)
+	if err != nil || p.SHA256 == "" {
+		if safeSha256Regex.MatchString(idOrSha) {
+			p.SHA256 = idOrSha
+		} else {
+			return nil, "", fmt.Errorf("payload not found")
+		}
+	}
+
+	if !safeSha256Regex.MatchString(p.SHA256) {
+		return nil, "", fmt.Errorf("invalid payload checksum")
+	}
+
 	downloadDirs := []string{
 		"/home/cowrie/cowrie/var/lib/cowrie/downloads",
 		"/opt/honeytrace/data/downloads",
@@ -1167,14 +1262,11 @@ func (s *Store) GetPayloadRaw(idOrSha string) ([]byte, string, error) {
 		"./var/lib/cowrie/downloads",
 	}
 
-	var p PayloadItem
-	_ = s.db.QueryRow("SELECT sha256 FROM payloads WHERE id = ? OR sha256 = ?", idOrSha, idOrSha).Scan(&p.SHA256)
-	if p.SHA256 == "" {
-		p.SHA256 = idOrSha
-	}
-
 	for _, d := range downloadDirs {
-		candidate := filepath.Join(d, p.SHA256)
+		candidate, vErr := safeJoinAndVerify(d, p.SHA256)
+		if vErr != nil {
+			continue
+		}
 		if data, err := os.ReadFile(candidate); err == nil {
 			filename := "malware-" + p.SHA256[:min(16, len(p.SHA256))] + ".bin"
 			return data, filename, nil
@@ -1235,6 +1327,9 @@ func (s *Store) ListSessionRecordings() []SessionRecording {
 			}
 
 			sessID := entry.Name()
+			if !isValidSafeSessionID(sessID) {
+				continue
+			}
 			if seen[sessID] {
 				continue
 			}
@@ -1307,6 +1402,9 @@ func (s *Store) ListSessionRecordings() []SessionRecording {
 		for rows.Next() {
 			var sessID, srcIP, tsStr string
 			if err := rows.Scan(&sessID, &srcIP, &tsStr); err == nil {
+				if !isValidSafeSessionID(sessID) {
+					continue
+				}
 				if !seen[sessID] {
 					seen[sessID] = true
 					ts, _ := time.Parse(time.RFC3339Nano, tsStr)
@@ -1348,6 +1446,10 @@ func (s *Store) ListSessionRecordings() []SessionRecording {
 // GetSessionReplay parses the raw Cowrie TTY binary log `<iLiiLL` into timed keystroke frames.
 func (s *Store) GetSessionReplay(sessionID string) (*SessionRecording, error) {
 	sessionID = strings.TrimSpace(sessionID)
+	if !isValidSafeSessionID(sessionID) {
+		return nil, fmt.Errorf("invalid session identifier: must be an alphanumeric ID")
+	}
+
 	ttyDirs := []string{
 		"/home/cowrie/cowrie/var/lib/cowrie/tty",
 		"/opt/honeytrace/data/tty",
@@ -1357,7 +1459,10 @@ func (s *Store) GetSessionReplay(sessionID string) (*SessionRecording, error) {
 
 	var filePath string
 	for _, d := range ttyDirs {
-		candidate := filepath.Join(d, sessionID)
+		candidate, vErr := safeJoinAndVerify(d, sessionID)
+		if vErr != nil {
+			continue
+		}
 		if _, err := os.Stat(candidate); err == nil {
 			filePath = candidate
 			break
