@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "http://13.234.121.199:8080/api/$1"
+      "destination": "https://api.honeytrace.tapasvimadhak.works/api/$1"
     },
     {
       "source": "/(.*)",
