@@ -16,6 +16,7 @@ import {
   Check,
 } from 'lucide-react';
 import CyberMarkdown from '../components/CyberMarkdown';
+import { getAuthHeaders } from '../api/client';
 
 interface EventItem {
   id: string;
@@ -106,7 +107,10 @@ export default function Intel() {
   // 1. Fetch cached or fresh AI summary
   const fetchExecutiveReport = (force = false) => {
     setIsReportLoading(true);
-    fetch(`${API_BASE_URL}/api/v1/ai/summary${force ? '?force=true' : ''}`, { method: 'POST' })
+    fetch(`${API_BASE_URL}/api/v1/ai/summary${force ? '?force=true' : ''}`, {
+      method: 'POST',
+      headers: { ...getAuthHeaders() },
+    })
       .then((res) => (res.ok ? res.json() : null))
       .then((data: { report: string; updated_at: string; cached: boolean } | null) => {
         if (data && data.report) {
@@ -120,7 +124,9 @@ export default function Intel() {
 
   // 2. Fetch Playbook rules
   const fetchPlaybook = () => {
-    fetch(`${API_BASE_URL}/api/v1/ai/playbook`)
+    fetch(`${API_BASE_URL}/api/v1/ai/playbook`, {
+      headers: { ...getAuthHeaders() },
+    })
       .then((res) => (res.ok ? res.json() : null))
       .then((data: PlaybookData | null) => {
         if (data) setPlaybook(data);
@@ -157,7 +163,7 @@ export default function Intel() {
     setTriagingEventId(ev.id);
     fetch(`${API_BASE_URL}/api/v1/ai/triage`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({
         event_id: ev.id,
         event_type: ev.event_type,
@@ -200,7 +206,7 @@ export default function Intel() {
 
     fetch(`${API_BASE_URL}/api/v1/ai/chat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({
         message: text,
         history: historyPayload,

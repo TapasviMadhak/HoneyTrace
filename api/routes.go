@@ -19,45 +19,54 @@ type Routes struct {
 
 func Register(mux *http.ServeMux, store *Store, ai *AIService, abuse *AbuseClient, greynoise *GreyNoiseClient) {
 	routes := Routes{store: store, ai: ai, abuse: abuse, greynoise: greynoise}
-	mux.HandleFunc("/healthz", routes.healthz)
-	mux.HandleFunc("/api/v1/events", routes.events)
-	mux.HandleFunc("/api/v1/actors", routes.actors)
-	mux.HandleFunc("/api/v1/sessions", routes.sessions)
-	mux.HandleFunc("/api/v1/search", routes.search)
-	mux.HandleFunc("/api/v1/enrich", routes.enrich)
-	mux.HandleFunc("/api/v1/triage", routes.triage)
-	mux.HandleFunc("/api/v1/settings", routes.settings)
-	mux.HandleFunc("/api/v1/report", routes.report)
 
-	// Cyber telemetry and live breach/payload endpoints
-	mux.HandleFunc("/api/v1/telemetry/globe", routes.globeTelemetry)
-	mux.HandleFunc("/api/v1/telemetry/stats", routes.statsTelemetry)
-	mux.HandleFunc("/api/v1/telemetry/sync", routes.syncTelemetry)
-	mux.HandleFunc("/api/v1/telemetry/live", routes.liveTelemetry)
-	mux.HandleFunc("/api/v1/telemetry/breaches", routes.breachesTelemetry)
-	mux.HandleFunc("/api/v1/telemetry/payloads", routes.payloadsTelemetry)
-	mux.HandleFunc("/api/v1/telemetry/payloads/inspect", routes.payloadsInspect)
-	mux.HandleFunc("/api/v1/telemetry/payloads/download", routes.payloadsDownload)
-	mux.HandleFunc("/api/v1/telemetry/commands", routes.commandsTelemetry)
+	// 1. Healthcheck (publicly accessible for monitors/load-balancers)
+	mux.HandleFunc("/healthz", routes.healthz)
+
+	// 2. Telemetry and Analytics (Rate-limited, requires auth if HONEYTRACE_REQUIRE_AUTH_ALL=true)
+	mux.HandleFunc("/api/v1/events", RateLimit(GeneralRateLimiter, RequireGeneralAuth(routes.events)))
+	mux.HandleFunc("/api/v1/actors", RateLimit(GeneralRateLimiter, RequireGeneralAuth(routes.actors)))
+	mux.HandleFunc("/api/v1/sessions", RateLimit(GeneralRateLimiter, RequireGeneralAuth(routes.sessions)))
+	mux.HandleFunc("/api/v1/search", RateLimit(GeneralRateLimiter, RequireGeneralAuth(routes.search)))
+	mux.HandleFunc("/api/v1/enrich", RateLimit(GeneralRateLimiter, RequireGeneralAuth(routes.enrich)))
+	mux.HandleFunc("/api/v1/triage", RateLimit(GeneralRateLimiter, RequireGeneralAuth(routes.triage)))
+
+	// Admin / Management endpoints (Strict Master Auth)
+	mux.HandleFunc("/api/v1/settings", RateLimit(GeneralRateLimiter, RequireMasterAuth(routes.settings)))
+	mux.HandleFunc("/api/v1/report", RateLimit(GeneralRateLimiter, RequireMasterAuth(routes.report)))
+
+	// Cyber telemetry feeds
+	mux.HandleFunc("/api/v1/telemetry/globe", RateLimit(GeneralRateLimiter, RequireGeneralAuth(routes.globeTelemetry)))
+	mux.HandleFunc("/api/v1/telemetry/stats", RateLimit(GeneralRateLimiter, RequireGeneralAuth(routes.statsTelemetry)))
+	mux.HandleFunc("/api/v1/telemetry/sync", RateLimit(GeneralRateLimiter, RequireMasterAuth(routes.syncTelemetry)))
+	mux.HandleFunc("/api/v1/telemetry/live", RateLimit(GeneralRateLimiter, RequireGeneralAuth(routes.liveTelemetry)))
+	mux.HandleFunc("/api/v1/telemetry/breaches", RateLimit(GeneralRateLimiter, RequireGeneralAuth(routes.breachesTelemetry)))
+	mux.HandleFunc("/api/v1/telemetry/payloads", RateLimit(GeneralRateLimiter, RequireGeneralAuth(routes.payloadsTelemetry)))
+	mux.HandleFunc("/api/v1/telemetry/payloads/inspect", RateLimit(GeneralRateLimiter, RequireGeneralAuth(routes.payloadsInspect)))
+	mux.HandleFunc("/api/v1/telemetry/commands", RateLimit(GeneralRateLimiter, RequireGeneralAuth(routes.commandsTelemetry)))
+
+	// Sensitive Payload Binary Download (Strict Master Auth)
+	mux.HandleFunc("/api/v1/telemetry/payloads/download", RateLimit(GeneralRateLimiter, RequireMasterAuth(routes.payloadsDownload)))
 
 	// Dynamic Attacker Wordlist endpoints
-	mux.HandleFunc("/api/v1/telemetry/wordlist/summary", routes.wordlistSummary)
-	mux.HandleFunc("/api/v1/telemetry/wordlist/download", routes.wordlistDownload)
+	mux.HandleFunc("/api/v1/telemetry/wordlist/summary", RateLimit(GeneralRateLimiter, RequireGeneralAuth(routes.wordlistSummary)))
+	mux.HandleFunc("/api/v1/telemetry/wordlist/download", RateLimit(GeneralRateLimiter, RequireGeneralAuth(routes.wordlistDownload)))
 
-	// Interactive TTY Session Recordings & Keystroke Replay
-	mux.HandleFunc("/api/v1/telemetry/sessions/recordings", routes.sessionsRecordings)
-	mux.HandleFunc("/api/v1/telemetry/sessions/replay", routes.sessionsReplay)
+	// Session Recordings
+	mux.HandleFunc("/api/v1/telemetry/sessions/recordings", RateLimit(GeneralRateLimiter, RequireGeneralAuth(routes.sessionsRecordings)))
+	// Sensitive Keystroke Replay (Strict Master Auth)
+	mux.HandleFunc("/api/v1/telemetry/sessions/replay", RateLimit(GeneralRateLimiter, RequireMasterAuth(routes.sessionsReplay)))
 
-	// Threat Intelligence Endpoints: AbuseIPDB & GreyNoise
-	mux.HandleFunc("/api/v1/telemetry/ip-intel", routes.ipIntelTelemetry)
-	mux.HandleFunc("/api/v1/telemetry/greynoise", routes.greyNoiseTelemetry)
-	mux.HandleFunc("/api/v1/telemetry/radar", routes.threatRadarTelemetry)
+	// Threat Intelligence Endpoints
+	mux.HandleFunc("/api/v1/telemetry/ip-intel", RateLimit(GeneralRateLimiter, RequireGeneralAuth(routes.ipIntelTelemetry)))
+	mux.HandleFunc("/api/v1/telemetry/greynoise", RateLimit(GeneralRateLimiter, RequireGeneralAuth(routes.greyNoiseTelemetry)))
+	mux.HandleFunc("/api/v1/telemetry/radar", RateLimit(GeneralRateLimiter, RequireGeneralAuth(routes.threatRadarTelemetry)))
 
-	// AI SOC Analyst & Threat Intelligence Console Endpoints
-	mux.HandleFunc("/api/v1/ai/summary", routes.aiExecutiveSummary)
-	mux.HandleFunc("/api/v1/ai/triage", routes.aiEventTriage)
-	mux.HandleFunc("/api/v1/ai/chat", routes.aiChat)
-	mux.HandleFunc("/api/v1/ai/playbook", routes.aiPlaybook)
+	// AI SOC Analyst & Threat Intelligence Console (Strict Master Auth + Strict AI Rate Limiting)
+	mux.HandleFunc("/api/v1/ai/summary", RateLimit(AIRateLimiter, RequireMasterAuth(routes.aiExecutiveSummary)))
+	mux.HandleFunc("/api/v1/ai/triage", RateLimit(AIRateLimiter, RequireMasterAuth(routes.aiEventTriage)))
+	mux.HandleFunc("/api/v1/ai/chat", RateLimit(AIRateLimiter, RequireMasterAuth(routes.aiChat)))
+	mux.HandleFunc("/api/v1/ai/playbook", RateLimit(AIRateLimiter, RequireMasterAuth(routes.aiPlaybook)))
 }
 
 func (r Routes) healthz(w http.ResponseWriter, _ *http.Request) {

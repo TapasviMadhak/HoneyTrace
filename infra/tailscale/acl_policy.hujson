@@ -1,0 +1,36 @@
+// Tailscale Access Control List (ACL) Policy for HoneyTrace
+// Apply this policy in your Tailscale Admin Console (https://login.tailscale.com/admin/acls)
+// to isolate the EC2 honeypot from reaching any other device in your personal network.
+{
+  "tagOwners": {
+    "tag:honeypot": ["autogroup:admin"]
+  },
+
+  "acls": [
+    // 1. Allow the admin to access the honeypot for management over Tailscale SSH/API
+    {
+      "action": "accept",
+      "src": ["autogroup:admin"],
+      "dst": ["tag:honeypot:22", "tag:honeypot:8080"]
+    },
+
+    // 2. Allow devices owned by the admin full access to each other
+    {
+      "action": "accept",
+      "src": ["autogroup:admin"],
+      "dst": ["autogroup:self:*"]
+    }
+
+    // Notice: There is NO entry allowing tag:honeypot to initiate traffic to any peer!
+    // Tailscale is default-deny, so tag:honeypot cannot initiate any connection to
+    // KHYATIs-MacBook-Air, your personal machines, or any other tailnet device.
+  ],
+
+  "tests": [
+    // Verify that the honeypot cannot connect to any other host in the tailnet
+    {
+      "src": "tag:honeypot",
+      "deny": ["100.64.0.0/10:*", "*:*"]
+    }
+  ]
+}

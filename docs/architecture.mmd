@@ -12,7 +12,7 @@ flowchart TB
         GREYNOISE["GreyNoise Community API v3<br>(Internet Noise &amp; RIOT Engine)"]
   end
  subgraph INGRESS["Network Boundary &amp; Isolation"]
-        PUB_IP["Public IPv4 Interface<br>(13.234.121.199)"]
+        PUB_IP["Public IPv4 Interface<br>(Public Honeypot Port :22)"]
         IPTABLES["iptables NAT Rule<br>(Redirect :22 to :2222)"]
         FILTER["Ingress IP Filter<br>(Excludes Mac/Admin/VPN/Dashboard)"]
   end

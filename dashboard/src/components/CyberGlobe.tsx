@@ -177,7 +177,7 @@ export const CyberGlobe: React.FC<CyberGlobeProps> = ({
       city: 'Mumbai (Sensor)',
       country: 'India',
       color: '#00ff9d',
-      ip: '13.234.121.199',
+      ip: 'Sensor-Node-01',
     });
 
     return pts;

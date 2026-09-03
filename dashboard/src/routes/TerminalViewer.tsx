@@ -13,6 +13,7 @@ import {
   Clock,
   Sparkles,
 } from 'lucide-react';
+import { getAuthHeaders } from '../api/client';
 
 interface CommandItem {
   id: string;
@@ -62,10 +63,10 @@ export default function TerminalViewer() {
   const fetchAllData = () => {
     setIsLoading(true);
     Promise.all([
-      fetch(`${API_BASE_URL}/api/v1/telemetry/sessions/recordings`)
+      fetch(`${API_BASE_URL}/api/v1/telemetry/sessions/recordings`, { headers: { ...getAuthHeaders() } })
         .then((res) => (res.ok ? res.json() : null))
         .catch(() => null),
-      fetch(`${API_BASE_URL}/api/v1/telemetry/commands`)
+      fetch(`${API_BASE_URL}/api/v1/telemetry/commands`, { headers: { ...getAuthHeaders() } })
         .then((res) => (res.ok ? res.json() : null))
         .catch(() => null),
     ])
@@ -97,7 +98,9 @@ export default function TerminalViewer() {
     setCurrentFrameIdx(0);
     setTerminalOutput('');
 
-    fetch(`${API_BASE_URL}/api/v1/telemetry/sessions/replay?id=${selectedSessionId}`)
+    fetch(`${API_BASE_URL}/api/v1/telemetry/sessions/replay?id=${selectedSessionId}`, {
+      headers: { ...getAuthHeaders() },
+    })
       .then((res) => (res.ok ? res.json() : null))
       .then((data: SessionRecording | null) => {
         if (data) {

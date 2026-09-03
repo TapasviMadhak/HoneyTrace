@@ -46,6 +46,12 @@ interface PayloadInspection {
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 
+const getDownloadUrl = (sha: string) => {
+  const storedKey = typeof window !== 'undefined' ? localStorage.getItem('honeytrace_api_key') : '';
+  const base = `${API_BASE_URL}/api/v1/telemetry/payloads/download?sha256=${encodeURIComponent(sha)}`;
+  return storedKey ? `${base}&api_key=${encodeURIComponent(storedKey)}` : base;
+};
+
 export default function Payloads() {
   const [payloads, setPayloads] = useState<PayloadItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -289,7 +295,7 @@ export default function Payloads() {
 
                         {p.sha256 && (
                           <a
-                            href={`${API_BASE_URL}/api/v1/telemetry/payloads/download?sha256=${p.sha256}`}
+                            href={getDownloadUrl(p.sha256)}
                             download={`malware-${p.sha256.slice(0, 8)}.bin`}
                             className="p-1.5 rounded-lg bg-[#06080d] hover:bg-[#1e2638] border border-[#1e2638] text-slate-400 hover:text-white transition-all"
                             title="Download Raw Quarantined Binary"
@@ -489,7 +495,7 @@ export default function Payloads() {
               <span className="text-[11px]">HoneyTrace Quarantined Sandbox Storage</span>
               {inspectData?.sha256 && (
                 <a
-                  href={`${API_BASE_URL}/api/v1/telemetry/payloads/download?sha256=${inspectData.sha256}`}
+                  href={getDownloadUrl(inspectData.sha256)}
                   download={`malware-${inspectData.sha256.slice(0, 8)}.bin`}
                   className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-gradient-to-r from-purple-500/20 to-[#00f0ff]/20 hover:from-purple-500/30 hover:to-[#00f0ff]/30 border border-purple-500/40 text-white font-bold transition-all"
                 >

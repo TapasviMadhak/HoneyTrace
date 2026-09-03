@@ -6,6 +6,7 @@ readonly COWRIE_USER="cowrie"
 readonly COWRIE_HOME="/home/${COWRIE_USER}/cowrie"
 readonly VENV="${COWRIE_HOME}/cowrie-env"
 readonly COWRIE_REPOSITORY="https://github.com/cowrie/cowrie.git"
+readonly COWRIE_VERSION="v2.5.0"
 readonly DATA_ETC="${COWRIE_HOME}/src/cowrie/data/etc"
 
 if [[ "${EUID}" -ne 0 ]]; then
@@ -33,9 +34,10 @@ if [[ ! -d "${COWRIE_HOME}/.git" ]]; then
     echo "${COWRIE_HOME} exists but is not a Cowrie Git checkout; refusing to overwrite it." >&2
     exit 1
   fi
-  echo "Cloning the official Cowrie repository..."
+  echo "Cloning stable pinned Cowrie release (${COWRIE_VERSION})..."
   rmdir "${COWRIE_HOME}" 2>/dev/null || true
-  runuser -u "${COWRIE_USER}" -- git clone --depth 1 "${COWRIE_REPOSITORY}" "${COWRIE_HOME}"
+  runuser -u "${COWRIE_USER}" -- git clone --depth 1 --branch "${COWRIE_VERSION}" "${COWRIE_REPOSITORY}" "${COWRIE_HOME}" 2>/dev/null || \
+    runuser -u "${COWRIE_USER}" -- git clone --depth 1 "${COWRIE_REPOSITORY}" "${COWRIE_HOME}"
 fi
 
 if [[ -x "${VENV}/bin/python" ]] && "${VENV}/bin/python" -c 'import sys; raise SystemExit(sys.version_info[:2] != (3, 11))'; then
