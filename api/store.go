@@ -1321,11 +1321,32 @@ func (s *Store) ListSessionRecordings() []SessionRecording {
 			continue
 		}
 
-		for _, entry := range entries {
-			if entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+		// Sort entries by ModTime descending so latest tty recordings are checked first
+		type entryWithTime struct {
+			entry os.DirEntry
+			mtime time.Time
+		}
+		timedEntries := make([]entryWithTime, 0, len(entries))
+		for _, e := range entries {
+			if e.IsDir() || strings.HasPrefix(e.Name(), ".") {
 				continue
 			}
+			if inf, err := e.Info(); err == nil {
+				timedEntries = append(timedEntries, entryWithTime{entry: e, mtime: inf.ModTime()})
+			}
+		}
+		sort.Slice(timedEntries, func(i, j int) bool {
+			return timedEntries[i].mtime.After(timedEntries[j].mtime)
+		})
 
+		// Process up to 50 most recent TTY recordings to keep response fast
+		maxTTY := 50
+		if len(timedEntries) < maxTTY {
+			maxTTY = len(timedEntries)
+		}
+
+		for _, item := range timedEntries[:maxTTY] {
+			entry := item.entry
 			sessID := entry.Name()
 			if !isValidSafeSessionID(sessID) {
 				continue
@@ -1340,8 +1361,14 @@ func (s *Store) ListSessionRecordings() []SessionRecording {
 				continue
 			}
 
+			shortID := sessID
+			if len(shortID) > 12 {
+				shortID = shortID[:12]
+			}
+
 			var srcIP, user, tsStr string
-			_ = s.db.QueryRow("SELECT COALESCE(source_ip, 'Unknown'), COALESCE(username, 'root'), timestamp FROM events WHERE session_id = ? OR raw_json LIKE ? LIMIT 1", sessID, "%"+sessID+"%").Scan(&srcIP, &user, &tsStr)
+			// Indexed lookups on session_id (0 table scans)
+			_ = s.db.QueryRow("SELECT COALESCE(source_ip, 'Unknown'), COALESCE(username, 'root'), timestamp FROM events WHERE session_id = ? OR session_id = ? LIMIT 1", sessID, shortID).Scan(&srcIP, &user, &tsStr)
 
 			if srcIP == "" {
 				srcIP = "Unknown Attacker"
@@ -1354,11 +1381,11 @@ func (s *Store) ListSessionRecordings() []SessionRecording {
 			if tsStr != "" {
 				firstSeen, _ = time.Parse(time.RFC3339Nano, tsStr)
 			} else {
-				firstSeen = info.ModTime().UTC()
+				firstSeen = item.mtime.UTC()
 			}
 
-			// Gather any commands from database for preview
-			cmdRows, err := s.db.Query("SELECT command FROM commands WHERE session_id = ? OR id LIKE ? ORDER BY timestamp ASC LIMIT 10", sessID, "%"+sessID+"%")
+			// Gather commands using indexed lookup on session_id
+			cmdRows, err := s.db.Query("SELECT command FROM commands WHERE session_id = ? OR session_id = ? ORDER BY timestamp ASC LIMIT 10", sessID, shortID)
 			cmdList := make([]string, 0)
 			if err == nil {
 				for cmdRows.Next() {
