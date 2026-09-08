@@ -13,11 +13,11 @@ Want to see yourself pop up on the **3D Threat Globe** and **Threat Reputation R
 
 ### 1. Launch a Test Connection from your Terminal:
 ```bash
-# Connect to the public honeypot sensor on Port 22 (AWS EC2 Sensor Node):
-ssh -p 22 root@13.234.121.199
+# Connect to the public honeypot sensor on Port 22:
+ssh -p 22 root@honeytrace.tapasvimadhak.works
 
-# Or connect via the sensor DNS hostname:
-ssh -p 22 admin@api.honeytrace.tapasvimadhak.works
+# Or try custom usernames and passwords:
+ssh -p 22 admin@honeytrace.tapasvimadhak.works
 ```
 *(Any password you enter will either simulate an authentication challenge or grant an interactive sandbox shell)*.
 
@@ -39,10 +39,10 @@ flowchart TB
  subgraph WAN["Public Internet"]
         A["Adversaries / Scanners / Testers<br>(SSH Traffic on Port :22)"]
   end
- subgraph VERCEL_EDGE["Vercel Global Edge Network"]
+ subgraph INGRESS_EDGE["Encrypted Edge & Reverse Proxy (AWS EC2)"]
         DNS["Custom Domain (HTTPS)<br>honeytrace.tapasvimadhak.works"]
-        SPA["React 18 + Vite Cyber HUD<br>(3D Threat Globe &amp; Threat Radar)"]
-        PROXY["Vercel Serverless Rewrites<br>(vercel.json /api/* proxy)"]
+        SPA["React 18 + Vite Cyber HUD<br>(Static Host /opt/honeytrace/dashboard/dist)"]
+        PROXY["Nginx Reverse Proxy<br>(Port :443 TLS 1.3 / HTTP/2)"]
   end
  subgraph THREAT_INTEL["External Threat Intelligence APIs"]
         ABUSE["AbuseIPDB API v2<br>(IP Threat Score &amp; Auto-Report)"]

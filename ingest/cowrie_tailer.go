@@ -387,18 +387,30 @@ func isInternalOrIgnoredIP(ipStr string) bool {
 		return true
 	}
 
-	// Filter custom admin public IPv4s from environment (e.g. HONEYTRACE_ADMIN_IP=49.x.x.x or HONEYTRACE_IGNORE_IPS=1.2.3.4,5.6.7.8)
+	parsed := net.ParseIP(ipStr)
+
+	// Filter custom admin public IPv4s and CIDR blocks from environment
+	// (e.g. HONEYTRACE_ADMIN_IP=49.36.78.52 or HONEYTRACE_IGNORE_IPS=49.36.0.0/14,1.2.3.4)
 	for _, envKey := range []string{"HONEYTRACE_ADMIN_IP", "ADMIN_IP", "HONEYTRACE_IGNORE_IPS"} {
 		if val := os.Getenv(envKey); val != "" {
 			for _, ign := range strings.Split(val, ",") {
-				if strings.TrimSpace(ign) == ipStr {
+				ign = strings.TrimSpace(ign)
+				if ign == "" {
+					continue
+				}
+				if ign == ipStr {
 					return true
+				}
+				if strings.Contains(ign, "/") {
+					_, ipNet, err := net.ParseCIDR(ign)
+					if err == nil && parsed != nil && ipNet.Contains(parsed) {
+						return true
+					}
 				}
 			}
 		}
 	}
 
-	parsed := net.ParseIP(ipStr)
 	if parsed == nil {
 		return true
 	}
@@ -496,6 +508,9 @@ func (t *Tailer) IngestFile(path string) (int, error) {
 			if trimmed != "" {
 				ev, rawMap, pErr := t.parseEvent([]byte(trimmed))
 				if pErr == nil {
+					if isInternalOrIgnoredIP(ev.SourceIP) {
+						continue
+					}
 					if err := t.insertEvent(tx, ev); err == nil {
 						t.insertAuxiliary(tx, rawMap, ev)
 						inserted++

@@ -183,18 +183,29 @@ func isInternalOrIgnoredIP(ipStr string) bool {
 		return true
 	}
 
+	parsed := net.ParseIP(ipStr)
+
 	// Filter custom admin public IPv4s from environment (e.g. HONEYTRACE_ADMIN_IP=49.x.x.x or HONEYTRACE_IGNORE_IPS=1.2.3.4,5.6.7.8)
 	for _, envKey := range []string{"HONEYTRACE_ADMIN_IP", "ADMIN_IP", "HONEYTRACE_IGNORE_IPS"} {
 		if val := os.Getenv(envKey); val != "" {
 			for _, ign := range strings.Split(val, ",") {
-				if strings.TrimSpace(ign) == ipStr {
+				ign = strings.TrimSpace(ign)
+				if ign == "" {
+					continue
+				}
+				if ign == ipStr {
 					return true
+				}
+				if strings.Contains(ign, "/") {
+					_, ipNet, err := net.ParseCIDR(ign)
+					if err == nil && parsed != nil && ipNet.Contains(parsed) {
+						return true
+					}
 				}
 			}
 		}
 	}
 
-	parsed := net.ParseIP(ipStr)
 	if parsed == nil {
 		return true
 	}
@@ -253,10 +264,24 @@ func purgeInternalIPs(db *sql.DB) {
 			for _, ign := range strings.Split(val, ",") {
 				ign = strings.TrimSpace(ign)
 				if ign != "" {
-					_, _ = db.Exec("DELETE FROM events WHERE source_ip = ?;", ign)
-					_, _ = db.Exec("DELETE FROM commands WHERE source_ip = ?;", ign)
-					_, _ = db.Exec("DELETE FROM payloads WHERE source_ip = ?;", ign)
-					_, _ = db.Exec("DELETE FROM sessions WHERE source_ip = ?;", ign)
+					if strings.Contains(ign, "/") {
+						_, ipNet, err := net.ParseCIDR(ign)
+						if err == nil {
+							prefix := strings.Split(ign, "/")[0]
+							parts := strings.Split(prefix, ".")
+							if len(parts) >= 2 {
+								likePattern := parts[0] + "." + parts[1] + ".%"
+								_, _ = db.Exec("DELETE FROM events WHERE source_ip LIKE ? OR raw_json LIKE ?;", likePattern, "%"+parts[0]+"."+parts[1]+".%")
+								_, _ = db.Exec("DELETE FROM commands WHERE source_ip LIKE ?;", likePattern)
+								_, _ = db.Exec("DELETE FROM payloads WHERE source_ip LIKE ?;", likePattern)
+							}
+							_ = ipNet
+						}
+					} else {
+						_, _ = db.Exec("DELETE FROM events WHERE source_ip = ? OR raw_json LIKE ?;", ign, "%"+ign+"%")
+						_, _ = db.Exec("DELETE FROM commands WHERE source_ip = ?;", ign)
+						_, _ = db.Exec("DELETE FROM payloads WHERE source_ip = ?;", ign)
+					}
 				}
 			}
 		}
