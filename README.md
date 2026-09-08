@@ -13,11 +13,11 @@ Want to see yourself pop up on the **3D Threat Globe** and **Threat Reputation R
 
 ### 1. Launch a Test Connection from your Terminal:
 ```bash
-# Connect to the public honeypot sensor on Port 22:
-ssh -p 22 root@honeytrace.tapasvimadhak.works
+# Connect to the public honeypot sensor on Port 22 (AWS EC2 Sensor Node):
+ssh -p 22 root@13.234.121.199
 
-# Or try custom usernames and passwords:
-ssh -p 22 admin@honeytrace.tapasvimadhak.works
+# Or connect via the sensor DNS hostname:
+ssh -p 22 admin@api.honeytrace.tapasvimadhak.works
 ```
 *(Any password you enter will either simulate an authentication challenge or grant an interactive sandbox shell)*.
 
@@ -141,7 +141,7 @@ HoneyTrace uses a high-performance edge-proxy architecture that connects public 
 
 1. **Vercel Serverless Edge Proxy (`vercel.json`)**:
    - The React SPA is delivered globally via **Vercel's Edge Network** with automatic SSL/TLS on `honeytrace.tapasvimadhak.works`.
-   - Client queries to `/api/*` are securely proxied over HTTPS to the Go REST API running on AWS EC2 (`api.honeytrace.tapasvimadhak.works:8080`).
+   - Client queries to `/api/*` are securely proxied over HTTPS to the Go REST API running on AWS EC2 (`https://api.honeytrace.tapasvimadhak.works`).
    - **Zero Mixed-Content Blocking & Zero CORS Overhead**: Client browsers communicate exclusively via HTTPS.
 2. **Ingress Filtering & Isolation**:
    - **Strict Administrative IP Filter**: Excludes loopback (`127.0.0.1`), private subnets (`10.0.0.0/8`, `192.168.0.0/16`, `172.16.0.0/12`), Carrier-Grade NAT / Tailscale (`100.64.0.0/10`), and admin workstations so dashboard visits are never ingested or counted as attacks.
