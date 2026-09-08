@@ -36,7 +36,7 @@ func NewIngestAbuseClient() *IngestAbuseClient {
 
 // ReportAttacker reports malicious honeypot attackers to AbuseIPDB with 24-hour rate-limiting.
 func (c *IngestAbuseClient) ReportAttacker(ip string, attempts int, sampleUsername string) error {
-	if c.apiKey == "" || ip == "" || ip == "127.0.0.1" || strings.HasPrefix(ip, "10.") || strings.HasPrefix(ip, "100.") || strings.HasPrefix(ip, "192.168.") {
+	if c.apiKey == "" || isInternalOrIgnoredIP(ip) {
 		return nil
 	}
 

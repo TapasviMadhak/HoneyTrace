@@ -85,13 +85,9 @@ func NewAIService() *AIService {
 	}
 }
 
-func (ai *AIService) CallGroqMessages(messages []GroqMessage, maxTokens int) (string, error) {
-	if ai.apiKey == "" {
-		return "", fmt.Errorf("GROQ_API_KEY is not configured on the server")
-	}
-
+func (ai *AIService) executeGroqCall(model string, messages []GroqMessage, maxTokens int) (string, error) {
 	reqBody := GroqChatRequest{
-		Model:       "openai/gpt-oss-120b",
+		Model:       model,
 		Messages:    messages,
 		Temperature: 0.3,
 		MaxTokens:   maxTokens,
@@ -139,6 +135,34 @@ func (ai *AIService) CallGroqMessages(messages []GroqMessage, maxTokens int) (st
 	}
 
 	return "", fmt.Errorf("no choices returned by Groq AI")
+}
+
+func (ai *AIService) CallGroqMessages(messages []GroqMessage, maxTokens int) (string, error) {
+	if ai.apiKey == "" {
+		return "", fmt.Errorf("GROQ_API_KEY is not configured on the server")
+	}
+
+	primaryModel := os.Getenv("GROQ_MODEL")
+	if primaryModel == "" {
+		primaryModel = "qwen/qwen3.8-27b"
+	}
+
+	candidateModels := []string{primaryModel, "openai/gpt-oss-120b", "qwen/qwen3.6-27b"}
+	var lastErr error
+
+	for _, model := range candidateModels {
+		if model == "" {
+			continue
+		}
+		content, err := ai.executeGroqCall(model, messages, maxTokens)
+		if err == nil && content != "" {
+			return content, nil
+		}
+		lastErr = err
+		log.Printf("[AI] Model %s attempt failed: %v. Trying next fallback...", model, err)
+	}
+
+	return "", fmt.Errorf("all groq model candidates failed: %w", lastErr)
 }
 
 func (ai *AIService) CallGroq(systemPrompt, userPrompt string, maxTokens int) (string, error) {

@@ -62,6 +62,9 @@ CREATE INDEX IF NOT EXISTS idx_events_lat_lon ON events (latitude, longitude);
 CREATE INDEX IF NOT EXISTS idx_events_country_code ON events (country_code);
 CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events (timestamp);
 CREATE INDEX IF NOT EXISTS idx_events_session_id ON events (session_id);
+CREATE INDEX IF NOT EXISTS idx_events_event_type ON events (event_type);
+CREATE INDEX IF NOT EXISTS idx_events_type_session ON events (event_type, session_id);
+CREATE INDEX IF NOT EXISTS idx_events_source_ip ON events (source_ip);
 
 CREATE INDEX IF NOT EXISTS idx_payloads_timestamp ON payloads (timestamp);
 CREATE INDEX IF NOT EXISTS idx_payloads_source_ip ON payloads (source_ip);

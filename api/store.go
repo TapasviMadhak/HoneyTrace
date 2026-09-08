@@ -297,6 +297,14 @@ type Store struct {
 	subscribers map[chan LiveAttackEvent]struct{}
 	syncMu      sync.Mutex
 	stopChan    chan struct{}
+
+	statsCacheMu  sync.RWMutex
+	statsCacheVal *TelemetryStatsResponse
+	statsCacheAt  time.Time
+
+	globeCacheMu  sync.RWMutex
+	globeCacheVal *GlobeTelemetryResponse
+	globeCacheAt  time.Time
 }
 
 func NewStore(dbPath, logPath, mmdbPath string) (*Store, error) {
@@ -336,6 +344,14 @@ func NewStore(dbPath, logPath, mmdbPath string) (*Store, error) {
 	if _, err := s.SyncFromCowrieLog(); err != nil {
 		log.Printf("[Store] Initial Cowrie log sync note: %v", err)
 	}
+
+	// Truncate SQLite WAL file and build actor clusters on startup
+	s.CheckpointWAL()
+	go func() {
+		if count, err := s.SyncActorClusters(); err == nil {
+			log.Printf("[Store] Initial threat actor clusters mapped: %d clusters active", count)
+		}
+	}()
 
 	// Start background watcher for new DB events to broadcast over SSE
 	go s.watchLiveEvents()
@@ -409,6 +425,9 @@ func initSchema(db *sql.DB) error {
 	CREATE INDEX IF NOT EXISTS idx_events_country_code ON events (country_code);
 	CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events (timestamp);
 	CREATE INDEX IF NOT EXISTS idx_events_session_id ON events (session_id);
+	CREATE INDEX IF NOT EXISTS idx_events_event_type ON events (event_type);
+	CREATE INDEX IF NOT EXISTS idx_events_type_session ON events (event_type, session_id);
+	CREATE INDEX IF NOT EXISTS idx_events_source_ip ON events (source_ip);
 
 	CREATE INDEX IF NOT EXISTS idx_payloads_timestamp ON payloads (timestamp);
 	CREATE INDEX IF NOT EXISTS idx_payloads_source_ip ON payloads (source_ip);
@@ -416,6 +435,7 @@ func initSchema(db *sql.DB) error {
 
 	CREATE INDEX IF NOT EXISTS idx_commands_timestamp ON commands (timestamp);
 	CREATE INDEX IF NOT EXISTS idx_commands_session_id ON commands (session_id);
+	CREATE INDEX IF NOT EXISTS idx_commands_source_ip ON commands (source_ip);
 	`
 	_, err := db.Exec(schema)
 	return err
@@ -423,6 +443,7 @@ func initSchema(db *sql.DB) error {
 
 func (s *Store) Close() error {
 	close(s.stopChan)
+	s.CheckpointWAL()
 	if s.geo != nil {
 		s.geo.Close()
 	}
@@ -430,6 +451,141 @@ func (s *Store) Close() error {
 		return s.db.Close()
 	}
 	return nil
+}
+
+// CheckpointWAL truncates the SQLite WAL journal file, reducing disk usage
+func (s *Store) CheckpointWAL() {
+	if s.db == nil {
+		return
+	}
+	if _, err := s.db.Exec("PRAGMA wal_checkpoint(TRUNCATE);"); err != nil {
+		log.Printf("[Store] WAL checkpoint note: %v", err)
+	} else {
+		log.Printf("[Store] SQLite WAL checkpointed and truncated successfully")
+	}
+}
+
+// SyncActorClusters aggregates sessions by HASSH fingerprint from events and updates actor_clusters table
+func (s *Store) SyncActorClusters() (int, error) {
+	s.syncMu.Lock()
+	defer s.syncMu.Unlock()
+
+	query := `
+	SELECT 
+		COALESCE(json_extract(raw_json, '$.hassh'), '') as h,
+		COALESCE(GROUP_CONCAT(DISTINCT username), '') as users,
+		COUNT(DISTINCT session_id) as sess_count,
+		COUNT(DISTINCT source_ip) as ip_count,
+		COALESCE(MAX(timestamp), '') as last_seen
+	FROM events
+	WHERE json_extract(raw_json, '$.hassh') IS NOT NULL 
+	  AND json_extract(raw_json, '$.hassh') != ''
+	GROUP BY h
+	HAVING sess_count > 0
+	ORDER BY sess_count DESC;
+	`
+	rows, err := s.db.Query(query)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	type clusterData struct {
+		actorID        string
+		hassh          string
+		usernameCorpus string
+		label          string
+		lastSeen       string
+	}
+
+	clusters := make([]clusterData, 0)
+	for rows.Next() {
+		var h, users, lastSeen string
+		var sessCount, ipCount int
+		if err := rows.Scan(&h, &users, &sessCount, &ipCount, &lastSeen); err == nil && h != "" {
+			shortHash := h
+			if len(shortHash) > 12 {
+				shortHash = shortHash[:12]
+			}
+			actorID := fmt.Sprintf("actor:%s", shortHash)
+			userCorpus := users
+			if len(userCorpus) > 300 {
+				userCorpus = userCorpus[:300] + "..."
+			}
+			label := fmt.Sprintf("%d sessions across %d IPs", sessCount, ipCount)
+			ts := time.Now().UTC().Format(time.RFC3339Nano)
+			if lastSeen != "" {
+				ts = lastSeen
+			}
+			clusters = append(clusters, clusterData{
+				actorID:        actorID,
+				hassh:          h,
+				usernameCorpus: userCorpus,
+				label:          label,
+				lastSeen:       ts,
+			})
+		}
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	stmt, err := tx.Prepare(`
+		INSERT INTO actor_clusters (actor_id, hassh, username_corpus, label, updated_at)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(actor_id) DO UPDATE SET
+			hassh = excluded.hassh,
+			username_corpus = excluded.username_corpus,
+			label = excluded.label,
+			updated_at = excluded.updated_at;
+	`)
+	if err != nil {
+		return 0, err
+	}
+	defer stmt.Close()
+
+	for _, c := range clusters {
+		_, _ = stmt.Exec(c.actorID, c.hassh, c.usernameCorpus, c.label, c.lastSeen)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+
+	return len(clusters), nil
+}
+
+// GetEventByID retrieves an event by its unique ID
+func (s *Store) GetEventByID(id string) (*Event, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return nil, fmt.Errorf("empty event ID")
+	}
+
+	query := `
+	SELECT id, timestamp, source_ip, COALESCE(actor_id, ''), COALESCE(technique_id, ''),
+		severity, COALESCE(summary, ''), raw_json, COALESCE(latitude, 0), COALESCE(longitude, 0),
+		COALESCE(country_code, ''), COALESCE(city, ''), COALESCE(asn, ''),
+		COALESCE(session_id, ''), COALESCE(username, ''), COALESCE(password, ''), COALESCE(event_type, '')
+	FROM events
+	WHERE id = ? LIMIT 1;
+	`
+	var ev Event
+	var tsStr string
+	err := s.db.QueryRow(query, id).Scan(
+		&ev.ID, &tsStr, &ev.SourceIP, &ev.ActorID, &ev.TechniqueID,
+		&ev.Severity, &ev.Summary, &ev.RawJSON, &ev.Latitude, &ev.Longitude,
+		&ev.CountryCode, &ev.City, &ev.ASN,
+		&ev.SessionID, &ev.Username, &ev.Password, &ev.EventType,
+	)
+	if err != nil {
+		return nil, err
+	}
+	ev.Timestamp, _ = time.Parse(time.RFC3339Nano, tsStr)
+	return &ev, nil
 }
 
 func (s *Store) getSavedOffset(filename string, inode uint64) int64 {
@@ -732,6 +888,15 @@ func (s *Store) GetGlobeTelemetry(forceSync bool) GlobeTelemetryResponse {
 		}
 	}
 
+	// 5-second in-memory response cache prevents redundant table scans
+	s.globeCacheMu.RLock()
+	if !forceSync && s.globeCacheVal != nil && time.Since(s.globeCacheAt) < 5*time.Second {
+		cached := *s.globeCacheVal
+		s.globeCacheMu.RUnlock()
+		return cached
+	}
+	s.globeCacheMu.RUnlock()
+
 	now := time.Now().UTC()
 	secondsInMin := now.Second()
 	nextSyncSeconds := 60 - (secondsInMin % 60)
@@ -824,7 +989,7 @@ func (s *Store) GetGlobeTelemetry(forceSync bool) GlobeTelemetryResponse {
 		}
 	}
 
-	return GlobeTelemetryResponse{
+	resp := GlobeTelemetryResponse{
 		Markers:         markers,
 		TotalAttacks:    totalAttacks,
 		TotalAttempts:   totalAttacks,
@@ -838,6 +1003,13 @@ func (s *Store) GetGlobeTelemetry(forceSync bool) GlobeTelemetryResponse {
 		NextSyncSeconds: nextSyncSeconds,
 		LastSyncTime:    now.Format("15:04:05 UTC"),
 	}
+
+	s.globeCacheMu.Lock()
+	s.globeCacheVal = &resp
+	s.globeCacheAt = time.Now()
+	s.globeCacheMu.Unlock()
+
+	return resp
 }
 
 // GetTelemetryStats returns country aggregations, top source IPs, hourly activity sparkline, and sensor metadata.
@@ -847,6 +1019,15 @@ func (s *Store) GetTelemetryStats(forceSync bool) TelemetryStatsResponse {
 			log.Printf("[Store] Force sync warning: %v", err)
 		}
 	}
+
+	// 5-second in-memory response cache prevents redundant table scans
+	s.statsCacheMu.RLock()
+	if !forceSync && s.statsCacheVal != nil && time.Since(s.statsCacheAt) < 5*time.Second {
+		cached := *s.statsCacheVal
+		s.statsCacheMu.RUnlock()
+		return cached
+	}
+	s.statsCacheMu.RUnlock()
 
 	now := time.Now().UTC()
 	secondsInMin := now.Second()
@@ -962,7 +1143,7 @@ func (s *Store) GetTelemetryStats(forceSync bool) TelemetryStatsResponse {
 		recentFeeds = recentFeeds[:25]
 	}
 
-	return TelemetryStatsResponse{
+	resp := TelemetryStatsResponse{
 		TotalAttempts:   totalAttempts,
 		TotalAttacks:    totalAttempts,
 		UniqueIPs:       uniqueIPs,
@@ -982,6 +1163,13 @@ func (s *Store) GetTelemetryStats(forceSync bool) TelemetryStatsResponse {
 		NextSyncSeconds: nextSyncSeconds,
 		ServerTime:      now,
 	}
+
+	s.statsCacheMu.Lock()
+	s.statsCacheVal = &resp
+	s.statsCacheAt = time.Now()
+	s.statsCacheMu.Unlock()
+
+	return resp
 }
 
 func countryCodeToName(code string) string {
@@ -1808,6 +1996,9 @@ func (s *Store) watchLiveEvents() {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
+	maintenanceTicker := time.NewTicker(15 * time.Minute)
+	defer maintenanceTicker.Stop()
+
 	for {
 		select {
 		case <-s.stopChan:
@@ -1816,6 +2007,12 @@ func (s *Store) watchLiveEvents() {
 			if _, err := s.SyncFromCowrieLog(); err != nil {
 				// Ignore file-not-found when idle
 			}
+		case <-maintenanceTicker.C:
+			// Perform regular threat actor cluster refresh and WAL journal truncation
+			go func() {
+				_, _ = s.SyncActorClusters()
+				s.CheckpointWAL()
+			}()
 		}
 	}
 }

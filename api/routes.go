@@ -93,23 +93,146 @@ func (r Routes) search(w http.ResponseWriter, req *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": r.store.Search(req.URL.Query().Get("q"))})
 }
 
-func (r Routes) enrich(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"status": "queued"})
+func (r Routes) enrich(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	ip := strings.TrimSpace(req.URL.Query().Get("ip"))
+	eventID := strings.TrimSpace(req.URL.Query().Get("event_id"))
+
+	if ip == "" && eventID != "" {
+		if ev, err := r.store.GetEventByID(eventID); err == nil && ev != nil {
+			ip = ev.SourceIP
+		}
+	}
+
+	if ip == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error":   "Bad Request",
+			"message": "ip or event_id query parameter required for enrichment",
+		})
+		return
+	}
+
+	type EnrichResponse struct {
+		IP         string            `json:"ip"`
+		Abuse      *CachedReputation `json:"abuse,omitempty"`
+		GreyNoise  *CachedGreyNoise  `json:"greynoise,omitempty"`
+		EnrichedAt time.Time         `json:"enriched_at"`
+	}
+
+	res := EnrichResponse{
+		IP:         ip,
+		EnrichedAt: time.Now().UTC(),
+	}
+
+	var wg sync.WaitGroup
+	if r.abuse != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if rep, err := r.abuse.CheckIP(ip); err == nil {
+				res.Abuse = rep
+			}
+		}()
+	}
+
+	if r.greynoise != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if gn, err := r.greynoise.CheckIP(ip); err == nil {
+				res.GreyNoise = gn
+			}
+		}()
+	}
+
+	wg.Wait()
+	writeJSON(w, http.StatusOK, res)
 }
 
 func (r Routes) triage(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	eventID := strings.TrimSpace(req.URL.Query().Get("event_id"))
+	if eventID == "" {
+		// Provide triage for the latest event
+		events := r.store.ListEvents()
+		if len(events) > 0 {
+			eventID = events[0].ID
+		}
+	}
+
+	if eventID == "" {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status":  "no_events",
+			"summary": "No events available for automated triage.",
+		})
+		return
+	}
+
+	ev, err := r.store.GetEventByID(eventID)
+	if err != nil || ev == nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{
+			"error":   "Not Found",
+			"message": fmt.Sprintf("Event with ID %s not found", eventID),
+		})
+		return
+	}
+
+	if r.ai == nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"event_id": eventID,
+			"source_ip": ev.SourceIP,
+			"technique": ev.TechniqueID,
+			"summary":   ev.Summary,
+			"mode":      "baseline (AI service unconfigured)",
+		})
+		return
+	}
+
+	summary, err := r.ai.TriageSingleEvent(ev.ID, ev.EventType, ev.SourceIP, ev.Username, ev.Password, "", ev.RawJSON)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"event_id":  eventID,
+			"source_ip": ev.SourceIP,
+			"summary":   ev.Summary,
+			"error":     err.Error(),
+		})
+		return
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
-		"event_id": req.URL.Query().Get("event_id"),
-		"summary":  "Triage scaffold is live. Connect a provider to generate analyst notes.",
+		"event_id":  eventID,
+		"source_ip": ev.SourceIP,
+		"summary":   summary,
+		"triaged_at": time.Now().UTC(),
 	})
 }
 
 func (r Routes) settings(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"status": "stub"})
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	writeJSON(w, http.StatusOK, map[string]any{
+		"version":          "1.0.0",
+		"status":           "operational",
+		"ai_service":       r.ai != nil,
+		"abuse_intel_feed": r.abuse != nil,
+		"greynoise_feed":   r.greynoise != nil,
+		"db_status":        "connected",
+		"timestamp":        time.Now().UTC(),
+	})
 }
 
 func (r Routes) report(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"status": "review-required"})
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	stats := r.store.GetTelemetryStats(false)
+	breaches := r.store.GetBreachesTelemetry()
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":           "active",
+		"sensor_location":  stats.SensorLocation,
+		"total_attacks":    stats.TotalAttacks,
+		"total_breaches":   breaches.TotalBreaches,
+		"quarantined_iocs": len(stats.TopSourceIPs),
+		"generated_at":     time.Now().UTC(),
+	})
 }
 
 // globeTelemetry returns aggregated 3D globe markers, total attack statistics, and server-side sync timer.

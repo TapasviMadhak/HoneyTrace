@@ -183,8 +183,14 @@ var (
 	AIRateLimiter      = NewIPRateLimiter(15, 5)   // 15 req/min for expensive AI queries
 )
 
-// getClientIP extracts real client IP
+// getClientIP extracts real client IP, prioritizing X-Real-IP set securely by reverse proxy
 func getClientIP(r *http.Request) string {
+	if realIP := r.Header.Get("X-Real-IP"); realIP != "" {
+		clean := strings.TrimSpace(realIP)
+		if clean != "" {
+			return clean
+		}
+	}
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 		parts := strings.Split(xff, ",")
 		if len(parts) > 0 {
@@ -209,6 +215,20 @@ func (l *IPRateLimiter) Allow(ip string) bool {
 	now := time.Now()
 	entry, exists := l.limits[ip]
 	if !exists {
+		// Cap memory to prevent DoS via infinite IP generation
+		if len(l.limits) >= 10000 {
+			for k, v := range l.limits {
+				if now.Sub(v.lastRefill) > 2*time.Minute {
+					delete(l.limits, k)
+				}
+				if len(l.limits) < 8000 {
+					break
+				}
+			}
+			if len(l.limits) >= 10000 {
+				return false
+			}
+		}
 		l.limits[ip] = &rateLimitEntry{
 			tokens:     l.capacity - 1,
 			lastRefill: now,

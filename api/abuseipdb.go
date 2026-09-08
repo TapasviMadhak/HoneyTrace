@@ -71,11 +71,11 @@ func NewAbuseClient() *AbuseClient {
 
 // CheckIP fetches reputation data from AbuseIPDB APIv2 with in-memory caching.
 func (c *AbuseClient) CheckIP(ip string) (*CachedReputation, error) {
-	if ip == "" || ip == "127.0.0.1" || strings.HasPrefix(ip, "10.") || strings.HasPrefix(ip, "100.") || strings.HasPrefix(ip, "192.168.") || strings.HasPrefix(ip, "172.16.") {
+	if isInternalOrIgnoredIP(ip) {
 		return &CachedReputation{
 			IP:        ip,
 			Score:     0,
-			ISP:       "Internal/Private Network",
+			ISP:       "Internal/Ignored Network",
 			UsageType: "Private / Reserved",
 			CachedAt:  time.Now(),
 		}, nil

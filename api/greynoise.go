@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strings"
 	"sync"
 	"time"
 )
@@ -62,13 +61,13 @@ func NewGreyNoiseClient() *GreyNoiseClient {
 
 // CheckIP queries GreyNoise Community API v3 with caching
 func (c *GreyNoiseClient) CheckIP(ip string) (*CachedGreyNoise, error) {
-	if ip == "" || ip == "127.0.0.1" || strings.HasPrefix(ip, "10.") || strings.HasPrefix(ip, "100.") || strings.HasPrefix(ip, "192.168.") {
+	if isInternalOrIgnoredIP(ip) {
 		return &CachedGreyNoise{
 			IP:             ip,
 			Noise:          false,
 			Riot:           false,
 			Classification: "benign",
-			Name:           "Internal/Private Network",
+			Name:           "Internal/Ignored Network",
 			Link:           "",
 			LastSeen:       time.Now().UTC().Format(time.RFC3339),
 			CachedAt:       time.Now(),
